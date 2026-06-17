@@ -1,10 +1,13 @@
 """
-Conector Porto Alegre — NFS-e Porto Alegre / NFS-e Nacional.
-Portal: https://nfse.portoalegre.rs.gov.br/
-Estratégia:
-  - Chave longa: NFS-e Nacional.
-  - Código curto (ex: b46a80ef): portal municipal via Playwright.
-  - CCM (CMEI): portal municipal SMAM/SMF de Porto Alegre.
+Conector Porto Alegre — NFS-e Nacional (portal municipal fora do ar).
+Portais testados com DNS failure: nfse.portoalegre.rs.gov.br,
+  portalnfse.portoalegre.rs.gov.br, nfse.pmpa.com.br.
+
+Estrategia:
+  - Chave longa (40+ digitos): NFS-e Nacional (captura screenshot).
+  - Codigo curto (ex: b46a80ef): portal municipal indisponivel — registra como
+    INDISPONIVEL; documento nao pode ser obtido sem acesso ao sistema legado.
+  - CCM: portal municipal offline — CCM nao disponivel publicamente.
 """
 from __future__ import annotations
 from pathlib import Path
@@ -26,13 +29,13 @@ class PortoAlegreConnector(MunicipalConnector):
 
     @property
     def estrategia(self) -> str:
-        return "NFS-e Nacional (chave longa) + portal municipal POA (Playwright)"
+        return "NFS-e Nacional (chave longa) | portal municipal POA offline (codigo curto = INDISPONIVEL)"
 
     def lookup_ccm(self, row: InputRow) -> CcmResult:
-        logger.info("POA: consultando CCM para CNPJ {}", row.cnpj)
+        logger.info("POA: portal municipal com falha DNS — CCM indisponivel para CNPJ {}", row.cnpj)
         return CcmResult(
             found=False,
-            error="Portal Porto Alegre requer login para consulta de CCM/IM",
+            error="Portal Porto Alegre com falha DNS — CCM nao disponivel",
         )
 
     def download_company_registration(self, row: InputRow, dest_dir: Path) -> DownloadResult:
@@ -41,6 +44,10 @@ class PortoAlegreConnector(MunicipalConnector):
 
     def download_invoice(self, row: InputRow, dest_dir: Path) -> DownloadResult:
         if is_nfse_nacional_key(row.cod_verificacao):
+            logger.info("POA: chave NFS-e Nacional — delegando para NfseNacionalConnector")
             return _nfse_nacional.download_invoice(row, dest_dir)
-        from src.browser.playwright_runner import capture_poa_invoice
-        return capture_poa_invoice(row, dest_dir)
+        logger.warning("POA: codigo curto {} — portal municipal offline", row.cod_verificacao)
+        return DownloadResult(
+            success=False,
+            error="Portal Porto Alegre com falha DNS — documento indisponivel para codigo curto",
+        )

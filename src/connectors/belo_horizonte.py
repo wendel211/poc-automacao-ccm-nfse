@@ -1,10 +1,13 @@
 """
-Conector Belo Horizonte — BHISS Digital / NFS-e BH.
-Portal NFS-e: https://bhiss.pbh.gov.br/nfse/
+Conector Belo Horizonte — Portal NFS-e BH (servicos.pbh.gov.br).
+URL verificada: https://servicos.pbh.gov.br/nfse/autenticidade (HTTP 200).
+URL antiga bhiss.pbh.gov.br não resolve DNS.
+
 Estratégia:
-  - Chave longa (50+ dígitos): delega ao NfseNacionalConnector.
-  - Código curto (ex: 1f3be52b, YVSC-ARGB): Playwright via portal BHISS.
-  - CCM: consultado via portal BHISS (requer CNPJ/CPF do prestador).
+  - Chave longa (40+ dígitos): NfseNacionalConnector.
+  - Código curto (ex: 1f3be52b, YVSC-ARGB): Playwright via portal BH.
+  - CCM: portal BH usa Sydle SPA (Web Components), não renderiza form
+    em headless sem tempo de espera elevado — captura screenshot como evidência.
 """
 from __future__ import annotations
 from pathlib import Path
@@ -18,7 +21,7 @@ from src.connectors.nfse_nacional import NfseNacionalConnector
 from src.models import CcmResult, DownloadResult, InputRow
 from src.utils.cnpj import is_nfse_nacional_key
 
-_BHISS_AUTENTICIDADE = "https://bhiss.pbh.gov.br/nfse/faces/pages/autenticidade/consultaAutenticidade.xhtml"
+_BH_AUTENTICIDADE = "https://servicos.pbh.gov.br/nfse/autenticidade"
 _TIMEOUT = httpx.Timeout(30.0)
 _HEADERS = {"User-Agent": "Mozilla/5.0 (compatible; poc-automacao-ccm-nfse/0.1)"}
 
@@ -39,11 +42,11 @@ class BeloHorizonteConnector(MunicipalConnector):
         logger.info("BH: consultando CCM para CNPJ {}", row.cnpj)
         try:
             with httpx.Client(timeout=_TIMEOUT, headers=_HEADERS, follow_redirects=True) as client:
-                resp = client.get(_BHISS_AUTENTICIDADE)
+                resp = client.get(_BH_AUTENTICIDADE)
             if resp.status_code in (200, 302):
                 return CcmResult(
                     found=False,
-                    error="BHISS requer sessão para consulta de CCM — usar Playwright com CNPJ",
+                    error="Portal BH (servicos.pbh.gov.br) requer sessão para consulta de CCM",
                 )
             return CcmResult(found=False, error=f"HTTP {resp.status_code}")
         except httpx.TimeoutException:
