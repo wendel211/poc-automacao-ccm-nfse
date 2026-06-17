@@ -2,6 +2,8 @@
 
 POC de automação fiscal: consulta de **CCM (Inscrição Municipal)** e download de documentos NFS-e para 5 municípios brasileiros, a partir de planilha de entrada.
 
+> **GIF demo abaixo** — adicione após gravar com ScreenToGif
+
 ## O que faz
 
 Para cada linha da planilha de entrada:
@@ -11,68 +13,52 @@ Para cada linha da planilha de entrada:
 3. Baixa o cadastro municipal da empresa (PDF, XML ou screenshot)
 4. Baixa o documento da nota fiscal (PDF, XML ou screenshot)
 5. Atualiza a planilha com status, CCM encontrado e caminhos dos arquivos
+6. Gera relatório HTML com screenshots embutidos
 
 ## Municípios suportados
 
-| Município | Estratégia | Tipo de chave |
+| Município | Estratégia | Limitação documentada |
 |---|---|---|
-| Belo Horizonte | BHISS Digital (Playwright) + NFS-e Nacional | Chave longa (44+ dígitos) ou código curto |
-| Rio de Janeiro | NFS-e Nacional (2026) + Nota Carioca (Playwright) | Chave longa ou código curto |
-| Barueri | Portal Barueri NFS-e (HTTP + Playwright) | Código com pontos/hífen ou código curto |
-| Porto Alegre | NFS-e Nacional + portal municipal (Playwright) | Chave longa ou código curto |
-| Nova Lima | NFS-e Nacional (adesão jan/2026) + portal fallback | Chave longa ou código curto |
-
-## Estrutura do projeto
-
-```
-.
-├── src/
-│   ├── main.py               # CLI (typer)
-│   ├── pipeline.py           # Orquestrador principal
-│   ├── models.py             # Modelos Pydantic (InputRow, RowResult, ...)
-│   ├── excel_handler.py      # Leitura e escrita do .xlsx
-│   ├── database.py           # Cache SQLite (CCM por município+CNPJ)
-│   ├── connectors/           # Um conector por município
-│   │   ├── base.py           # Interface abstrata MunicipalConnector
-│   │   ├── barueri.py
-│   │   ├── belo_horizonte.py
-│   │   ├── rio_de_janeiro.py
-│   │   ├── porto_alegre.py
-│   │   ├── nova_lima.py
-│   │   └── nfse_nacional.py  # Conector NFS-e Nacional (chaves longas)
-│   ├── browser/
-│   │   └── playwright_runner.py  # Automação de portais via Playwright
-│   └── utils/
-│       ├── cnpj.py           # Normalização e validação de CNPJ
-│       └── filesystem.py     # Organização de pastas de evidência
-├── tests/                    # Testes unitários (pytest)
-├── input/                    # Planilha(s) de entrada
-├── output/                   # Planilha de resultado + evidências (gerado)
-├── docs/                     # Análise técnica e decisões
-└── pyproject.toml
-```
+| Belo Horizonte | `servicos.pbh.gov.br` (Playwright) + NFS-e Nacional | Sydle SPA / Shadow DOM |
+| Rio de Janeiro | Nota Carioca (formulário preenchido) + NFS-e Nacional | CAPTCHA bloqueia submissão |
+| Barueri | ISSNet Online (Playwright) | Cloudflare 403 — evidência txt |
+| Porto Alegre | NFS-e Nacional (chave longa) / INDISPONIVEL (código curto) | DNS fail em todos os portais |
+| Nova Lima | NFS-e Nacional exclusivo (adesão jan/2026) | Portal municipal offline |
 
 ## Como rodar
 
-### Pré-requisitos
-
-- Python 3.11+
-- pip
-
-### Instalação
+### Opção 1 — Python local
 
 ```bash
 pip install -e ".[dev]"
-playwright install chromium
-```
-
-### Executar
-
-```bash
+python -m playwright install chromium
 python -m src.main input/janabril2026_amostra_5x5.xlsx
 ```
 
-Saída em `output/resultado_<timestamp>.xlsx` e evidências em `output/evidencias/`.
+### Opção 2 — Docker
+
+```bash
+docker compose run --rm pipeline
+```
+
+Durante a execução o terminal exibe uma tabela ao vivo com o status de cada linha:
+
+```
+  POC Automacao CCM + NFS-e
+ ┏━━━━┳━━━━━━━━━┳━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━┳━━━━━━━━━┓
+ ┃ #  ┃ ID      ┃ Município        ┃ CNPJ              ┃ Status       ┃ Evidenc ┃
+ ┡━━━━╇━━━━━━━━━╇━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━╇━━━━━━━━━┩
+ │ 1  │ 2652712 │ Belo Horizonte   │ 28.203.865/0001…  │ [OK] SUCESSO │ sim     │
+ │ 2  │ 2586757 │ Belo Horizonte   │ 09.346.601/0021…  │ [OK] SUCESSO │ sim     │
+ │ 3  │ 2716126 │ Rio De Janeiro   │ 13.952.675/0001…  │ [OK] SUCESSO │ sim     │
+ │ …  │ …       │ …                │ …                 │ ⏳ processando│ …       │
+ └────┴─────────┴──────────────────┴───────────────────┴──────────────┴─────────┘
+```
+
+Ao final gera automaticamente:
+- `output/resultado_<timestamp>.xlsx` — planilha com 9 colunas de resultado, coloridas por status
+- `output/relatorio_<timestamp>.html` — relatório com cards de resumo e screenshots embutidos
+- `output/evidencias/<MUNICIPIO>/<CNPJ>/` — screenshots e arquivos de evidência
 
 ### Testes
 
@@ -80,35 +66,71 @@ Saída em `output/resultado_<timestamp>.xlsx` e evidências em `output/evidencia
 python -m pytest tests/ -v
 ```
 
+## Estrutura do projeto
+
+```
+.
+├── src/
+│   ├── main.py               # CLI (typer)
+│   ├── pipeline.py           # Orquestrador + tabela rich ao vivo
+│   ├── report.py             # Gerador de relatório HTML
+│   ├── models.py             # Modelos Pydantic (InputRow, RowResult, ...)
+│   ├── excel_handler.py      # Leitura e escrita do .xlsx
+│   ├── database.py           # Cache SQLite (CCM por município+CNPJ)
+│   ├── connectors/           # Um conector por município (Strategy pattern)
+│   │   ├── base.py
+│   │   ├── barueri.py
+│   │   ├── belo_horizonte.py
+│   │   ├── rio_de_janeiro.py
+│   │   ├── porto_alegre.py
+│   │   ├── nova_lima.py
+│   │   └── nfse_acional.py
+│   ├── browser/
+│   │   └── playwright_runner.py
+│   └── utils/
+│       ├── cnpj.py
+│       └── filesystem.py
+├── tests/                    # 14 testes unitários (pytest)
+├── input/                    # Planilha de entrada
+├── output/                   # Resultados gerados (xlsx, html, evidências)
+├── docs/                     # Decisões técnicas e análise de portais
+├── Dockerfile
+├── docker-compose.yml
+└── pyproject.toml
+```
+
 ## Saída da planilha
 
-Colunas adicionadas ao final:
+Colunas adicionadas ao final (color-coded por status):
 
 | Coluna | Descrição |
 |---|---|
 | `STATUS_EXECUCAO` | SUCESSO / PARCIAL / ERRO / INDISPONIVEL |
 | `MENSAGEM_TECNICA` | Detalhe do erro (timeout, captcha, HTTP status) |
 | `CCM_ENCONTRADO` | Inscrição Municipal encontrada |
-| `ARQUIVO_CADASTRO` | Caminho do cadastro municipal baixado |
+| `ARQUIVO_CADASTRO` | Caminho do cadastro municipal |
 | `ARQUIVO_NOTA_PDF` | Caminho do PDF da nota |
 | `ARQUIVO_NOTA_XML` | Caminho do XML da nota |
+| `ARQUIVO_EVIDENCIA` | Screenshot PNG de evidência |
 | `MUNICIPIO_ESTRATEGIA` | Estratégia usada por município |
 | `DATA_EXECUCAO` | Timestamp da execução |
 
-## Estrutura de evidências
+## Resultado da execução real
 
-```
-output/evidencias/
-└── BELO_HORIZONTE/
-    └── 28203865000174/
-        ├── cadastro_28203865000174.png
-        └── notas/
-            └── 3106200222820386.pdf
-```
+Executado sobre `janabril2026_amostra_5x5.xlsx` (25 linhas, 5 municípios):
+
+| Status | Linhas | Motivo |
+|---|---|---|
+| SUCESSO | 10 | BH (5) + RJ (5) — screenshots capturados |
+| PARCIAL | 9 | POA (4) + Nova Lima (5) — NFS-e Nacional capturado, cadastro municipal offline |
+| ERRO | 6 | Barueri (5) Cloudflare 403 + POA código curto (1) portal offline |
+
+Evidências em `output/evidencias/` — 34 arquivos organizados por município e CNPJ.
 
 ## Limitações conhecidas
 
-- Portais municipais podem exigir CAPTCHA — não há bypass automático implementado
-- CCM não é exposto publicamente pela maioria dos municípios sem autenticação
-- Mudanças de layout em portais JSF/ASP.NET podem quebrar os seletores Playwright
-- NFS-e Nacional requer que o portal esteja disponível e sem bloqueio por IP/volume
+- **CAPTCHA (RJ):** formulário preenchido mas submissão bloqueada — screenshot como evidência
+- **Cloudflare (Barueri):** ISSNet retorna 403 para qualquer client headless — evidência .txt
+- **Auth gov.br (NFS-e Nacional):** portal exige login — screenshot da página de login
+- **CCM não público:** nenhum dos 5 municípios expõe CCM sem autenticação
+- **Portais offline (POA / Nova Lima):** DNS fail em todos os endpoints testados

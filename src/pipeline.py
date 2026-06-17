@@ -5,6 +5,10 @@ from pathlib import Path
 from typing import Dict
 
 from loguru import logger
+from rich.console import Console
+from rich.live import Live
+from rich.table import Table
+from rich.text import Text
 
 from src.connectors.barueri import BarueriConnector
 from src.connectors.base import MunicipalConnector
@@ -25,6 +29,70 @@ _CONNECTORS: dict[Municipio, MunicipalConnector] = {
     Municipio.NOVA_LIMA: NovaLimaConnector(),
 }
 
+_STATUS_STYLE = {
+    StatusExecucao.SUCESSO: "bold green",
+    StatusExecucao.PARCIAL: "bold yellow",
+    StatusExecucao.ERRO: "bold red",
+    StatusExecucao.INDISPONIVEL: "dim",
+}
+
+_STATUS_ICON = {
+    StatusExecucao.SUCESSO: "[OK]",
+    StatusExecucao.PARCIAL: "[~]",
+    StatusExecucao.ERRO: "[X]",
+    StatusExecucao.INDISPONIVEL: "[-]",
+}
+
+import io, sys as _sys
+_stdout_utf8 = io.TextIOWrapper(_sys.stdout.buffer, encoding="utf-8", errors="replace")
+console = Console(file=_stdout_utf8, highlight=False)
+
+
+def _build_table(rows: list[InputRow], results: dict[str, RowResult], current_id: str | None) -> Table:
+    table = Table(
+        title="[bold cyan]POC Automação CCM + NFS-e[/bold cyan]",
+        show_lines=True,
+        expand=True,
+    )
+    table.add_column("#", style="dim", width=4)
+    table.add_column("ID", width=9)
+    table.add_column("Município", width=18)
+    table.add_column("CNPJ", width=18)
+    table.add_column("Status", width=14)
+    table.add_column("Evidência", width=10)
+    table.add_column("Mensagem", overflow="fold")
+
+    for i, row in enumerate(rows, 1):
+        result = results.get(row.id_documento)
+        if result:
+            status = result.status
+            style = _STATUS_STYLE[status]
+            icon = _STATUS_ICON[status]
+            evidencia = "sim" if (result.arquivo_cadastro or result.arquivo_evidencia or result.arquivo_nota_pdf) else "nao"
+            msg = (result.mensagem_tecnica or "")[:60]
+            status_text = Text(f"{icon} {status.value}", style=style)
+        elif row.id_documento == current_id:
+            style = "bold cyan"
+            status_text = Text("⏳ processando", style=style)
+            evidencia = "..."
+            msg = ""
+        else:
+            status_text = Text("—", style="dim")
+            evidencia = ""
+            msg = ""
+
+        table.add_row(
+            str(i),
+            row.id_documento,
+            row.municipio.value.title(),
+            row.cnpj_raw,
+            status_text,
+            evidencia,
+            msg,
+        )
+
+    return table
+
 
 def _process_row(
     row: InputRow,
@@ -35,7 +103,6 @@ def _process_row(
     company_dir, notes_dir = ensure_dirs(evidencias_base, row.municipio.value, row.cnpj_raw)
     now = datetime.now().isoformat(timespec="seconds")
 
-    # 1. CCM — usa cache se já consultado
     ccm_cached = db.get_ccm(row.municipio.value, row.cnpj)
     if ccm_cached:
         ccm_value = ccm_cached
@@ -50,27 +117,19 @@ def _process_row(
             "SUCESSO" if ccm_result.found else "INDISPONIVEL",
         )
 
-    # 2. Cadastro municipal
     reg_result = connector.download_company_registration(row, company_dir)
-
-    # 3. Nota fiscal
     inv_result = connector.download_invoice(row, notes_dir)
 
-    # 4. Determina status final
     successes = [reg_result.success, inv_result.success]
     if all(successes):
         status = StatusExecucao.SUCESSO
         msg = None
     elif any(successes):
         status = StatusExecucao.PARCIAL
-        msg = "; ".join(
-            filter(None, [reg_result.error, inv_result.error])
-        )
+        msg = "; ".join(filter(None, [reg_result.error, inv_result.error]))
     else:
         status = StatusExecucao.ERRO
-        msg = "; ".join(
-            filter(None, [reg_result.error, inv_result.error])
-        )
+        msg = "; ".join(filter(None, [reg_result.error, inv_result.error]))
 
     logger.log(
         "SUCCESS" if status == StatusExecucao.SUCESSO else "WARNING",
@@ -116,19 +175,25 @@ def run(
     results: dict[str, RowResult] = {}
 
     rows = list(read_rows(input_path))
-    logger.info("Iniciando pipeline: {} linhas", len(rows))
+    total = len(rows)
+    logger.info("Iniciando pipeline: {} linhas", total)
 
-    for row in rows:
-        connector = _CONNECTORS.get(row.municipio)
-        if not connector:
-            logger.error("Sem conector para município: {}", row.municipio)
-            results[row.id_documento] = RowResult(
-                id_documento=row.id_documento,
-                status=StatusExecucao.ERRO,
-                mensagem_tecnica=f"Município sem conector implementado: {row.municipio}",
-            )
-            continue
-        results[row.id_documento] = _process_row(row, connector, evidencias, db)
+    with Live(console=console, refresh_per_second=4, vertical_overflow="visible") as live:
+        for row in rows:
+            live.update(_build_table(rows, results, row.id_documento))
+
+            connector = _CONNECTORS.get(row.municipio)
+            if not connector:
+                logger.error("Sem conector para município: {}", row.municipio)
+                results[row.id_documento] = RowResult(
+                    id_documento=row.id_documento,
+                    status=StatusExecucao.ERRO,
+                    mensagem_tecnica=f"Município sem conector: {row.municipio}",
+                )
+                continue
+
+            results[row.id_documento] = _process_row(row, connector, evidencias, db)
+            live.update(_build_table(rows, results, None))
 
     output_xlsx = output_dir / f"resultado_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
     write_results(input_path, output_xlsx, results)
@@ -136,6 +201,19 @@ def run(
     sucesso = sum(1 for r in results.values() if r.status == StatusExecucao.SUCESSO)
     parcial = sum(1 for r in results.values() if r.status == StatusExecucao.PARCIAL)
     erro = sum(1 for r in results.values() if r.status == StatusExecucao.ERRO)
-    logger.info("Pipeline concluído: {} sucesso | {} parcial | {} erro", sucesso, parcial, erro)
 
+    console.print()
+    console.rule("[bold cyan]Resultado Final[/bold cyan]")
+    console.print(f"  [OK]  SUCESSO:    [bold green]{sucesso}/{total}[/bold green]")
+    console.print(f"  [~]   PARCIAL:    [bold yellow]{parcial}/{total}[/bold yellow]")
+    console.print(f"  [X]   ERRO:       [bold red]{erro}/{total}[/bold red]")
+    console.print(f"  Planilha:         [cyan]{output_xlsx}[/cyan]")
+    console.print(f"  Evidencias:       [cyan]{evidencias}[/cyan]")
+
+    from src.report import generate as generate_report
+    report_path = generate_report(results, output_dir, output_xlsx, input_path)
+    console.print(f"  Relatorio HTML:   [cyan]{report_path}[/cyan]")
+    console.rule()
+
+    logger.info("Pipeline concluído: {} sucesso | {} parcial | {} erro", sucesso, parcial, erro)
     return output_xlsx

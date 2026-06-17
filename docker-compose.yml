@@ -1,0 +1,7 @@
+services:
+  pipeline:
+    build: .
+    volumes:
+      - ./output:/app/output
+    environment:
+      - PYTHONIOENCODING=utf-8

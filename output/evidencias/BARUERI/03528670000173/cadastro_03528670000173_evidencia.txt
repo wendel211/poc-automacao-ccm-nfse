@@ -1,0 +1,4 @@
+URL: https://www.issnetonline.com.br/webissnetonline/velo/autenticidade.jsf?id=12
+HTTP status: 403
+Label: cadastro CNPJ 03528670000173
+Cloudflare bloqueou screenshot (CSP/Headless restriction)
