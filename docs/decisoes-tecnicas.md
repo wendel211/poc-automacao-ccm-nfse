@@ -63,10 +63,30 @@ Linhas coloridas por status na planilha de resultado:
 - Vermelho: ERRO
 - Cinza: INDISPONIVEL
 
-## 10. Desafios encontrados
+## 10. Verificação de URLs por HTTP antes de implementar
+
+Antes de implementar a automação, todos os endpoints foram verificados via `httpx` para confirmar disponibilidade real. Resultado:
+
+| Município | URL inicial (incorreta) | URL verificada | Status HTTP |
+|---|---|---|---|
+| Belo Horizonte | `bhiss.pbh.gov.br` | `servicos.pbh.gov.br/nfse/autenticidade` | 200 OK |
+| Barueri | `barueri.nfse.ig.com.br` | `issnetonline.com.br/webissnetonline/velo/autenticidade.jsf?id=12` | 403 Cloudflare |
+| Porto Alegre | `nfse.portoalegre.rs.gov.br` | — (todos com DNS failure) | NXDOMAIN |
+| Nova Lima | `nfse.novalima.mg.gov.br` | — (migrado para NFS-e Nacional em Jan/2026) | NXDOMAIN |
+| NFS-e Nacional | endpoint `/Visualizar?chaveAcesso=` | `www.nfse.gov.br/EmissorNacional/` (Playwright) | 500 (requer sessão) |
+
+Motivo: implementar automação em URL errada gasta tempo e gera falsos negativos. A verificação HTTP antecipada permite documentar limitações reais antes de escrever código.
+
+## 11. Desafios encontrados
 
 **CCM não público**: nenhum dos 5 municípios da amostra expõe CCM sem autenticação no portal público. A POC registra isso como `INDISPONIVEL` e indica a necessidade de credenciais ou acesso via login.
 
-**Chave da planilha truncada**: o campo `COD.VERIFICACAO` aparece truncado no Excel (reticências). O valor completo está disponível ao abrir o arquivo — o leitor `openpyxl` lê o valor completo sem truncamento.
+**Cloudflare em Barueri**: ISSNet retorna HTTP 403 com challenge JavaScript para qualquer client headless sem fingerprint de browser real. A CSP do Cloudflare também bloqueia `Page.captureScreenshot` via CDP. Solução: salvar evidência em arquivo `.txt` com URL e status HTTP.
 
-**Portais JSF**: BHISS Digital e portal Porto Alegre usam JavaServer Faces. Os seletores CSS são gerados dinamicamente com IDs longos. A estratégia adotada foi usar seletores parciais (`id*=`, `name*=`) para robustez a mudanças de versão.
+**NFS-e Nacional requer auth gov.br**: o endpoint `/Visualizar?chaveAcesso=` retorna HTTP 500 sem sessão autenticada. A POC navega ao portal via Playwright e captura screenshot da página de login como evidência da tentativa.
+
+**Portal RJ com CAPTCHA**: Nota Carioca `/documentos/verificacao.aspx` inclui campo `tbCaptchaControl`. A POC preenche CNPJ, número da nota e código de verificação mas não consegue submeter o formulário. Screenshot do formulário preenchido é salvo como evidência.
+
+**Porto Alegre e Nova Lima offline**: todos os endpoints DNS testados retornam NXDOMAIN. Nova Lima aderiu ao NFS-e Nacional em janeiro de 2026, tornando o portal municipal legado inacessível. Porto Alegre não tem endpoint público conhecido disponível.
+
+**`domcontentloaded` vs `networkidle`**: portais com muitos recursos externos (analytics, CDN) nunca atingem `networkidle` dentro do timeout de 30s. Uso de `domcontentloaded` reduz o timeout efetivo e evita falsos erros de navegação.
