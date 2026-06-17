@@ -92,9 +92,26 @@ def write_results(source_path: Path, dest_path: Path, results: dict[str, RowResu
         ]
         for col_name, value in zip(_OUTPUT_COLS, values):
             col_idx = header_row.index(col_name) + 1
-            cell = ws.cell(row=row_idx, column=col_idx, value=value)
+            # Normalize Unicode punctuation to ASCII so openpyxl does not emit
+            # characters that Windows cp1252 Excel installations misread.
+            safe_value = str(value).replace("—", " - ").replace("–", " - ")
+            cell = ws.cell(row=row_idx, column=col_idx, value=safe_value)
             cell.fill = fill
             cell.alignment = Alignment(wrap_text=False)
 
+    _autosize_output_columns(ws, header_row)
     wb.save(dest_path)
-    logger.info("Planilha de saída salva: {}", dest_path)
+    logger.info("Planilha de saida salva: {}", dest_path)
+
+
+def _autosize_output_columns(ws, header_row: list) -> None:
+    for col_name in _OUTPUT_COLS:
+        if col_name not in header_row:
+            continue
+        col_idx = header_row.index(col_name) + 1
+        col_letter = ws.cell(row=1, column=col_idx).column_letter
+        max_len = len(col_name)
+        for row in ws.iter_rows(min_col=col_idx, max_col=col_idx, min_row=2):
+            cell_val = str(row[0].value or "")
+            max_len = max(max_len, len(cell_val))
+        ws.column_dimensions[col_letter].width = min(max_len + 2, 60)
