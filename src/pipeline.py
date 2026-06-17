@@ -88,14 +88,16 @@ def _process_row(
         estrategia=connector.estrategia,
     )
 
+    inv_path = inv_result.file_path
     return RowResult(
         id_documento=row.id_documento,
         status=status,
         mensagem_tecnica=msg,
         ccm_encontrado=ccm_value,
         arquivo_cadastro=reg_result.file_path,
-        arquivo_nota_pdf=inv_result.file_path if inv_result.file_path and inv_result.file_path.endswith(".pdf") else None,
-        arquivo_nota_xml=inv_result.file_path if inv_result.file_path and inv_result.file_path.endswith(".xml") else None,
+        arquivo_nota_pdf=inv_path if inv_path and inv_path.endswith(".pdf") else None,
+        arquivo_nota_xml=inv_path if inv_path and inv_path.endswith(".xml") else None,
+        arquivo_evidencia=inv_path if inv_path and inv_path.endswith(".png") else None,
         municipio_estrategia=connector.estrategia,
         data_execucao=now,
     )

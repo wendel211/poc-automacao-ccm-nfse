@@ -67,5 +67,6 @@ class RowResult(BaseModel):
     arquivo_cadastro: Optional[str] = None
     arquivo_nota_pdf: Optional[str] = None
     arquivo_nota_xml: Optional[str] = None
+    arquivo_evidencia: Optional[str] = None
     municipio_estrategia: Optional[str] = None
     data_execucao: Optional[str] = None

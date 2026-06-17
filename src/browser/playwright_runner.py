@@ -43,57 +43,68 @@ def _try_import_playwright():
 # Barueri — ISSNet Online (403 Cloudflare documentado)
 # ---------------------------------------------------------------------------
 
-def capture_barueri_company(row: InputRow, dest_dir: Path) -> DownloadResult:
+def _barueri_navigate_and_evidence(dest_dir: Path, filename: str, label: str) -> tuple[str | None, int | None, str | None]:
+    """Navega ao ISSNet e tenta capturar evidencia. Retorna (file_path, status, error)."""
     sync_playwright = _try_import_playwright()
     if not sync_playwright:
-        return DownloadResult(success=False, error="Playwright nao instalado")
-
+        return None, None, "Playwright nao instalado"
     try:
         with sync_playwright() as p:
             browser = p.chromium.launch(headless=True)
             page = browser.new_page()
-            logger.info("Barueri: acessando ISSNet para cadastro CNPJ {}", row.cnpj)
             resp = page.goto(_ISSNET_URL, timeout=30000, wait_until="domcontentloaded")
-            screenshot = _screenshot(page, dest_dir, f"cadastro_{row.cnpj}")
+            status = resp.status if resp else None
+            try:
+                out = _screenshot(page, dest_dir, filename)
+                file_path = str(out)
+            except Exception:
+                # Cloudflare CSP bloqueia screenshot — salva evidencia em texto
+                evidence = dest_dir / f"{filename}_evidencia.txt"
+                evidence.write_text(
+                    f"URL: {_ISSNET_URL}\nHTTP status: {status}\nLabel: {label}\n"
+                    "Cloudflare bloqueou screenshot (CSP/Headless restriction)\n",
+                    encoding="utf-8",
+                )
+                file_path = str(evidence)
             browser.close()
-        status = resp.status if resp else "?"
-        if status == 403:
-            return DownloadResult(
-                success=False,
-                file_path=str(screenshot),
-                error="ISSNet retornou 403 Cloudflare — acesso de bot bloqueado",
-            )
-        return DownloadResult(success=True, file_path=str(screenshot))
+        return file_path, status, None
     except Exception as exc:
-        logger.error("Barueri company capture error: {}", exc)
-        return DownloadResult(success=False, error=str(exc))
+        return None, None, str(exc)
+
+
+def capture_barueri_company(row: InputRow, dest_dir: Path) -> DownloadResult:
+    logger.info("Barueri: acessando ISSNet para cadastro CNPJ {}", row.cnpj)
+    file_path, status, error = _barueri_navigate_and_evidence(
+        dest_dir, f"cadastro_{row.cnpj}", f"cadastro CNPJ {row.cnpj}"
+    )
+    if error:
+        logger.error("Barueri company capture error: {}", error)
+        return DownloadResult(success=False, error=error)
+    if status == 403:
+        return DownloadResult(
+            success=False,
+            file_path=file_path,
+            error="ISSNet retornou 403 Cloudflare — acesso de bot bloqueado",
+        )
+    return DownloadResult(success=True, file_path=file_path)
 
 
 def capture_barueri_invoice(row: InputRow, dest_dir: Path) -> DownloadResult:
-    sync_playwright = _try_import_playwright()
-    if not sync_playwright:
-        return DownloadResult(success=False, error="Playwright nao instalado")
-
     cod = row.cod_verificacao.strip()
-    try:
-        with sync_playwright() as p:
-            browser = p.chromium.launch(headless=True)
-            page = browser.new_page()
-            logger.info("Barueri: acessando ISSNet para nota {} (cod {})", row.id_documento, cod)
-            resp = page.goto(_ISSNET_URL, timeout=30000, wait_until="domcontentloaded")
-            screenshot = _screenshot(page, dest_dir, f"nota_{cod[:20]}")
-            browser.close()
-        status = resp.status if resp else "?"
-        if status == 403:
-            return DownloadResult(
-                success=False,
-                file_path=str(screenshot),
-                error="ISSNet retornou 403 Cloudflare — acesso de bot bloqueado",
-            )
-        return DownloadResult(success=True, file_path=str(screenshot))
-    except Exception as exc:
-        logger.error("Barueri invoice capture error: {}", exc)
-        return DownloadResult(success=False, error=str(exc))
+    logger.info("Barueri: acessando ISSNet para nota {} (cod {})", row.id_documento, cod)
+    file_path, status, error = _barueri_navigate_and_evidence(
+        dest_dir, f"nota_{cod[:20]}", f"nota {row.id_documento} cod {cod}"
+    )
+    if error:
+        logger.error("Barueri invoice capture error: {}", error)
+        return DownloadResult(success=False, error=error)
+    if status == 403:
+        return DownloadResult(
+            success=False,
+            file_path=file_path,
+            error="ISSNet retornou 403 Cloudflare — acesso de bot bloqueado",
+        )
+    return DownloadResult(success=True, file_path=file_path)
 
 
 # ---------------------------------------------------------------------------
@@ -110,7 +121,7 @@ def capture_bh_company(row: InputRow, dest_dir: Path) -> DownloadResult:
             browser = p.chromium.launch(headless=True)
             page = browser.new_page()
             logger.info("BH: acessando portal NFS-e para cadastro CNPJ {}", row.cnpj)
-            page.goto(_BH_URL, timeout=30000, wait_until="networkidle")
+            page.goto(_BH_URL, timeout=30000, wait_until="domcontentloaded")
             screenshot = _screenshot(page, dest_dir, f"cadastro_{row.cnpj}")
             browser.close()
         return DownloadResult(
@@ -133,7 +144,7 @@ def capture_bh_invoice(row: InputRow, dest_dir: Path) -> DownloadResult:
             browser = p.chromium.launch(headless=True)
             page = browser.new_page()
             logger.info("BH: acessando portal NFS-e para nota {} (cod {})", row.id_documento, cod)
-            page.goto(_BH_URL, timeout=30000, wait_until="networkidle")
+            page.goto(_BH_URL, timeout=30000, wait_until="domcontentloaded")
             # Sydle SPA renderiza form via Web Components (Shadow DOM).
             # Tentativa de preencher campo de autenticidade:
             try:
@@ -168,7 +179,7 @@ def capture_rj_company(row: InputRow, dest_dir: Path) -> DownloadResult:
             browser = p.chromium.launch(headless=True)
             page = browser.new_page()
             logger.info("RJ: acessando Nota Carioca para cadastro CNPJ {}", row.cnpj)
-            page.goto(_RJ_VERIFICACAO_URL, timeout=30000, wait_until="networkidle")
+            page.goto(_RJ_VERIFICACAO_URL, timeout=30000, wait_until="domcontentloaded")
             try:
                 page.fill("input[name='ctl00$cphCabMenu$tbCPFCNPJ']", row.cnpj)
             except Exception:
@@ -193,7 +204,7 @@ def capture_rj_invoice(row: InputRow, dest_dir: Path) -> DownloadResult:
             browser = p.chromium.launch(headless=True)
             page = browser.new_page()
             logger.info("RJ: acessando Nota Carioca para nota {} (cod {})", row.id_documento, cod)
-            page.goto(_RJ_VERIFICACAO_URL, timeout=30000, wait_until="networkidle")
+            page.goto(_RJ_VERIFICACAO_URL, timeout=30000, wait_until="domcontentloaded")
             # Preenche formulario ASP.NET WebForms pre-CAPTCHA.
             # CAPTCHA impede submissao automatizada — captura estado do form como evidencia.
             try:
@@ -266,7 +277,7 @@ def capture_nfse_nacional(row: InputRow, dest_dir: Path, chave: str) -> Download
             browser = p.chromium.launch(headless=True)
             page = browser.new_page()
             logger.info("NFS-e Nacional: acessando portal para chave {} (row {})", safe_chave, row.id_documento)
-            page.goto(_NFSE_NACIONAL_URL, timeout=30000, wait_until="networkidle")
+            page.goto(_NFSE_NACIONAL_URL, timeout=30000, wait_until="domcontentloaded")
             screenshot = _screenshot(page, dest_dir, f"nfse_nacional_{safe_chave}")
             browser.close()
         return DownloadResult(

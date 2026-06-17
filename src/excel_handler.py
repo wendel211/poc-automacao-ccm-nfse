@@ -30,6 +30,7 @@ _OUTPUT_COLS = [
     "ARQUIVO_CADASTRO",
     "ARQUIVO_NOTA_PDF",
     "ARQUIVO_NOTA_XML",
+    "ARQUIVO_EVIDENCIA",
     "MUNICIPIO_ESTRATEGIA",
     "DATA_EXECUCAO",
 ]
@@ -87,6 +88,7 @@ def write_results(source_path: Path, dest_path: Path, results: dict[str, RowResu
             result.arquivo_cadastro or "",
             result.arquivo_nota_pdf or "",
             result.arquivo_nota_xml or "",
+            result.arquivo_evidencia or "",
             result.municipio_estrategia or "",
             result.data_execucao or datetime.now().isoformat(timespec="seconds"),
         ]
