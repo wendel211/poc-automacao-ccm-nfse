@@ -1,10 +1,19 @@
 """CLI de entrada — poc-automacao-ccm-nfse."""
 from pathlib import Path
 
+import sys
 import typer
 from loguru import logger
 
 app = typer.Typer(help="POC de automação CCM + Download NFS-e por município")
+
+
+def _safe_echo(msg: str) -> None:
+    try:
+        sys.stdout.buffer.write((str(msg)).encode("utf-8"))
+        sys.stdout.buffer.flush()
+    except Exception:
+        pass
 
 
 @app.command()
@@ -16,10 +25,10 @@ def run(
     """Processa a planilha: consulta CCM, baixa cadastros e notas fiscais."""
     logger.remove()
     logger.add(
-        lambda msg: typer.echo(msg, err=False),
+        _safe_echo,
         level=log_level,
-        format="<green>{time:HH:mm:ss}</green> | <level>{level:<8}</level> | {message}",
-        colorize=True,
+        format="{time:HH:mm:ss} | {level:<8} | {message}",
+        colorize=False,
     )
     logger.add(
         output_dir / "logs" / "execution.jsonl",
