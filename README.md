@@ -2,7 +2,7 @@
 
 POC de automação fiscal: consulta de **CCM (Inscrição Municipal)** e download de documentos NFS-e para 5 municípios brasileiros, a partir de planilha de entrada.
 
-> **GIF demo abaixo** — adicione após gravar com ScreenToGif
+![Demo do pipeline](demo.gif)
 
 ## O que faz
 
