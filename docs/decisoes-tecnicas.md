@@ -1,4 +1,4 @@
-# Decisões Técnicas — POC CCM + NFS-e
+# Decisões Técnicas - POC CCM + NFS-e
 
 ## Stack escolhida
 
