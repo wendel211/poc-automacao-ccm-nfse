@@ -207,6 +207,10 @@ def run(
     console.print(f"  ❌ ERRO:         [bold red]{erro}/{total}[/bold red]")
     console.print(f"  📄 Planilha:     [cyan]{output_xlsx}[/cyan]")
     console.print(f"  📁 Evidências:   [cyan]{evidencias}[/cyan]")
+
+    from src.report import generate as generate_report
+    report_path = generate_report(results, output_dir, output_xlsx, input_path)
+    console.print(f"  🌐 Relatório:    [cyan]{report_path}[/cyan]")
     console.rule()
 
     logger.info("Pipeline concluído: {} sucesso | {} parcial | {} erro", sucesso, parcial, erro)
