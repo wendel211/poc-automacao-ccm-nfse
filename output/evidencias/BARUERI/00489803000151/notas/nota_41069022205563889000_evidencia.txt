@@ -1,0 +1,4 @@
+URL: https://www.issnetonline.com.br/webissnetonline/velo/autenticidade.jsf?id=12
+HTTP status: 403
+Label: nota 2895618 cod 41069022205563889000139000000000316326044263891997
+Cloudflare bloqueou screenshot (CSP/Headless restriction)

@@ -13,13 +13,10 @@ build/
 playwright-report/
 test-results/
 
-# Output — versiona apenas o resultado mais recente e evidencias
-output/
-!output/.gitkeep
-!output/resultado_*.xlsx
-!output/relatorio_*.html
-!output/evidencias/**/*.png
-!output/evidencias/**/*.txt
+# Output — ignora arquivos temporarios mas versiona resultados e evidencias
+output/*.db
+output/*.db-shm
+output/*.db-wal
 
 # SQLite
 *.db
