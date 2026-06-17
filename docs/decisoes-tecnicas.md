@@ -88,6 +88,18 @@ Por execução:
 - `output/evidencias/<MUNICIPIO>/<CNPJ>/` — screenshot de cadastro
 - `output/evidencias/<MUNICIPIO>/<CNPJ>/notas/` — screenshot ou PDF da nota
 
+## Log de auditoria JSONL
+
+Cada execução grava `output/logs/execution_<timestamp>.jsonl` com uma entrada JSON por linha processada. Campos: `id_documento`, `municipio`, `cnpj`, `status`, `mensagem_tecnica`, `ccm_encontrado`, caminhos de arquivos e `municipio_estrategia`.
+
+Complementa o SQLite (que persiste cache entre execuções) e o relatório HTML (visualização): o JSONL é ideal para ingestão em ferramentas de análise e auditoria de execuções individuais. Arquivos `.jsonl` são ignorados pelo `.gitignore` por serem artefatos gerados.
+
+## CI com GitHub Actions
+
+O workflow `.github/workflows/ci.yml` roda `pytest tests/ -v` em todo push e pull request. Configuração: Ubuntu latest, Python 3.11, cache de pip.
+
+Os testes unitários (14 casos cobrindo normalização de CNPJ, detecção de chave NFS-e Nacional, modelos Pydantic e leitura do Excel) não dependem de Playwright nem de portais externos, portanto executam sem configuração adicional no runner. Testes de integração com browser são excluídos do CI por exigirem credenciais e portais reais.
+
 ## Limitações conhecidas e justificativas
 
 | Limitação | Causa | Como foi tratado |
