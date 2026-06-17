@@ -1,5 +1,6 @@
 """Orquestrador principal: lê planilha → processa por município → grava resultados."""
 from __future__ import annotations
+import json
 from datetime import datetime
 from pathlib import Path
 from typing import Dict
@@ -162,6 +163,25 @@ def _process_row(
     )
 
 
+def _write_jsonl_line(log_file: Path, result: RowResult, row: "InputRow") -> None:
+    entry = {
+        "timestamp": datetime.now().isoformat(timespec="seconds"),
+        "id_documento": result.id_documento,
+        "municipio": row.municipio.value,
+        "cnpj": row.cnpj_raw,
+        "status": result.status.value,
+        "mensagem_tecnica": result.mensagem_tecnica,
+        "ccm_encontrado": result.ccm_encontrado,
+        "arquivo_cadastro": result.arquivo_cadastro,
+        "arquivo_nota_pdf": result.arquivo_nota_pdf,
+        "arquivo_nota_xml": result.arquivo_nota_xml,
+        "arquivo_evidencia": result.arquivo_evidencia,
+        "municipio_estrategia": result.municipio_estrategia,
+    }
+    with log_file.open("a", encoding="utf-8") as f:
+        f.write(json.dumps(entry, ensure_ascii=False) + "\n")
+
+
 def run(
     input_path: Path,
     output_dir: Path = Path("output"),
@@ -170,6 +190,11 @@ def run(
     output_dir.mkdir(parents=True, exist_ok=True)
     evidencias = evidencias_dir or output_dir / "evidencias"
     evidencias.mkdir(parents=True, exist_ok=True)
+
+    logs_dir = output_dir / "logs"
+    logs_dir.mkdir(parents=True, exist_ok=True)
+    run_ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+    jsonl_path = logs_dir / f"execution_{run_ts}.jsonl"
 
     db = Database(output_dir / "poc.db")
     results: dict[str, RowResult] = {}
@@ -185,17 +210,21 @@ def run(
             connector = _CONNECTORS.get(row.municipio)
             if not connector:
                 logger.error("Sem conector para município: {}", row.municipio)
-                results[row.id_documento] = RowResult(
+                result = RowResult(
                     id_documento=row.id_documento,
                     status=StatusExecucao.ERRO,
                     mensagem_tecnica=f"Município sem conector: {row.municipio}",
                 )
+                results[row.id_documento] = result
+                _write_jsonl_line(jsonl_path, result, row)
                 continue
 
-            results[row.id_documento] = _process_row(row, connector, evidencias, db)
+            result = _process_row(row, connector, evidencias, db)
+            results[row.id_documento] = result
+            _write_jsonl_line(jsonl_path, result, row)
             live.update(_build_table(rows, results, None))
 
-    output_xlsx = output_dir / f"resultado_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
+    output_xlsx = output_dir / f"resultado_{run_ts}.xlsx"
     write_results(input_path, output_xlsx, results)
 
     sucesso = sum(1 for r in results.values() if r.status == StatusExecucao.SUCESSO)
@@ -209,6 +238,7 @@ def run(
     console.print(f"  [X]   ERRO:       [bold red]{erro}/{total}[/bold red]")
     console.print(f"  Planilha:         [cyan]{output_xlsx}[/cyan]")
     console.print(f"  Evidencias:       [cyan]{evidencias}[/cyan]")
+    console.print(f"  Log JSONL:        [cyan]{jsonl_path}[/cyan]")
 
     from src.report import generate as generate_report
     report_path = generate_report(results, output_dir, output_xlsx, input_path)

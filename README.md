@@ -1,4 +1,4 @@
-# POC de Automação — CCM + Download de Documentos NFS-e
+# POC de Automação - CCM + Download de Documentos NFS-e
 
 Automação fiscal que lê uma planilha de entrada, consulta o **CCM (Inscrição Municipal)** de cada empresa e faz o download dos documentos fiscais (cadastro municipal + nota fiscal) nos portais de 5 municípios brasileiros.
 
@@ -38,9 +38,9 @@ Executado sobre `janabril2026_amostra_5x5.xlsx` (25 linhas):
 
 | Status | Linhas | Detalhe |
 |---|---|---|
-| ✅ SUCESSO | 10 | BH (5) + RJ (5) — screenshots capturados |
-| ⚠️ PARCIAL | 9 | POA (4) + Nova Lima (5) — NFS-e Nacional capturado, cadastro offline |
-| ❌ ERRO | 6 | Barueri (5) Cloudflare + POA código curto (1) portal offline |
+|  SUCESSO | 10 | BH (5) + RJ (5) — screenshots capturados |
+|  PARCIAL | 9 | POA (4) + Nova Lima (5) — NFS-e Nacional capturado, cadastro offline |
+|  ERRO | 6 | Barueri (5) Cloudflare + POA código curto (1) portal offline |
 
 ---
 
