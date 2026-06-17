@@ -37,13 +37,15 @@ _STATUS_STYLE = {
 }
 
 _STATUS_ICON = {
-    StatusExecucao.SUCESSO: "✅",
-    StatusExecucao.PARCIAL: "⚠️ ",
-    StatusExecucao.ERRO: "❌",
-    StatusExecucao.INDISPONIVEL: "—",
+    StatusExecucao.SUCESSO: "[OK]",
+    StatusExecucao.PARCIAL: "[~]",
+    StatusExecucao.ERRO: "[X]",
+    StatusExecucao.INDISPONIVEL: "[-]",
 }
 
-console = Console()
+import io, sys as _sys
+_stdout_utf8 = io.TextIOWrapper(_sys.stdout.buffer, encoding="utf-8", errors="replace")
+console = Console(file=_stdout_utf8, highlight=False)
 
 
 def _build_table(rows: list[InputRow], results: dict[str, RowResult], current_id: str | None) -> Table:
@@ -202,15 +204,15 @@ def run(
 
     console.print()
     console.rule("[bold cyan]Resultado Final[/bold cyan]")
-    console.print(f"  ✅ SUCESSO:      [bold green]{sucesso}/{total}[/bold green]")
-    console.print(f"  ⚠️  PARCIAL:      [bold yellow]{parcial}/{total}[/bold yellow]")
-    console.print(f"  ❌ ERRO:         [bold red]{erro}/{total}[/bold red]")
-    console.print(f"  📄 Planilha:     [cyan]{output_xlsx}[/cyan]")
-    console.print(f"  📁 Evidências:   [cyan]{evidencias}[/cyan]")
+    console.print(f"  [OK]  SUCESSO:    [bold green]{sucesso}/{total}[/bold green]")
+    console.print(f"  [~]   PARCIAL:    [bold yellow]{parcial}/{total}[/bold yellow]")
+    console.print(f"  [X]   ERRO:       [bold red]{erro}/{total}[/bold red]")
+    console.print(f"  Planilha:         [cyan]{output_xlsx}[/cyan]")
+    console.print(f"  Evidencias:       [cyan]{evidencias}[/cyan]")
 
     from src.report import generate as generate_report
     report_path = generate_report(results, output_dir, output_xlsx, input_path)
-    console.print(f"  🌐 Relatório:    [cyan]{report_path}[/cyan]")
+    console.print(f"  Relatorio HTML:   [cyan]{report_path}[/cyan]")
     console.rule()
 
     logger.info("Pipeline concluído: {} sucesso | {} parcial | {} erro", sucesso, parcial, erro)

@@ -13,9 +13,13 @@ build/
 playwright-report/
 test-results/
 
-# Output (evidências geradas em runtime — não versionar)
+# Output — versiona apenas o resultado mais recente e evidencias
 output/
 !output/.gitkeep
+!output/resultado_*.xlsx
+!output/relatorio_*.html
+!output/evidencias/**/*.png
+!output/evidencias/**/*.txt
 
 # SQLite
 *.db
