@@ -1,0 +1,3 @@
+output/**/*.html linguist-generated=true
+output/**/*.xlsx linguist-generated=true
+output/**/*.txt linguist-generated=true

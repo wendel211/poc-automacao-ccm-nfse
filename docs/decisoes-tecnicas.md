@@ -1,92 +1,99 @@
 # Decisões Técnicas — POC CCM + NFS-e
 
-## 1. Linguagem e stack
+## Stack escolhida
 
-**Python como orquestrador principal.**
+**Python** como linguagem principal.
 
-Motivo: melhor ecossistema para manipulação de Excel (pandas/openpyxl), validação de dados (Pydantic) e integração com Playwright via binding nativo. Evita necessidade de processo Node.js separado na POC.
+- `pandas` / `openpyxl` — leitura e escrita do Excel
+- `pydantic` v2 — validação e normalização de cada linha da planilha antes de qualquer I/O
+- `httpx` — requisições HTTP com suporte a async e redirects
+- `tenacity` — retry com backoff exponencial em conectores instáveis
+- `loguru` — logs estruturados com nível e contexto por linha
+- `playwright` — automação de navegador headless (Chromium) para portais sem API
+- `rich` — tabela ao vivo no terminal mostrando progresso por linha
+- `typer` — CLI com `--help` gerado automaticamente
+- SQLite — cache de CCM por `municipio::cnpj` para evitar consultas duplicadas
 
-Alternativa considerada e descartada: Node.js + Playwright puro (excelente para automação web, mas mais trabalhoso para manipulação de Excel e validação de dados tabulares).
+## Padrão de conectores (Strategy Pattern)
 
-## 2. Pydantic para validação de entrada
+Cada município implementa a mesma interface:
 
-Cada linha da planilha passa por `InputRow` antes de qualquer I/O. Isso garante que CNPJs inválidos, municípios desconhecidos ou linhas sem código de verificação sejam rejeitados com mensagem clara antes de tentar acessar qualquer portal.
+```python
+class MunicipalConnector:
+    def lookup_ccm(self, row: InputRow) -> CcmResult: ...
+    def download_company_registration(self, row: InputRow, dest: Path) -> DownloadResult: ...
+    def download_invoice(self, row: InputRow, dest: Path) -> DownloadResult: ...
+```
 
-## 3. Detecção de chave NFS-e Nacional vs. código municipal
+O pipeline principal não sabe qual portal está acessando — apenas chama o conector correto pelo município. Isso permite adicionar novos municípios sem tocar no orquestrador.
 
-A planilha mistura dois formatos de `COD.VERIFICACAO`:
-- **Chave longa (40+ dígitos numéricos)**: padrão NFS-e Nacional (ABRASF/SEFIN). Pode aparecer com espaços de agrupamento.
+## Detecção de chave NFS-e Nacional vs. código municipal
+
+A planilha mistura dois formatos em `COD.VERIFICACAO`:
+
+- **Chave longa (40+ dígitos numéricos)**: padrão NFS-e Nacional (ABRASF). Pode vir com espaços de agrupamento.
 - **Código curto alfanumérico**: proprietário de cada portal municipal.
 
-A função `is_nfse_nacional_key` em `utils/cnpj.py` faz esse roteamento. Isso evita que o conector errado tente processar uma chave que não entende.
+A função `is_nfse_nacional_key()` faz esse roteamento via regex `\d{40,}` após remover espaços. Isso evita que o conector errado tente processar uma chave que não reconhece.
 
-## 4. Cache SQLite por município + CNPJ
+## Verificação de URLs antes de implementar
 
-Fornecedores aparecem duplicados na planilha (ex: FARIA E SILVA aparece em 2 linhas BH com mesmo CNPJ). Sem cache, faríamos 2 consultas idênticas ao portal. O cache SQLite garante que a segunda linha reutilize o resultado da primeira consulta.
+Antes de escrever qualquer automação, todos os endpoints foram verificados via `httpx`. Resultado:
 
-## 5. Padrão de conectores (Strategy pattern)
+| Município | URL testada | Resultado |
+|---|---|---|
+| Belo Horizonte | `bhiss.pbh.gov.br` | DNS failure |
+| Belo Horizonte | `servicos.pbh.gov.br/nfse/autenticidade` | **200 OK** |
+| Barueri | `barueri.nfse.ig.com.br` | DNS failure |
+| Barueri | `issnetonline.com.br/webissnetonline/velo/autenticidade.jsf?id=12` | **403 Cloudflare** |
+| Porto Alegre | todos os candidatos testados | DNS failure |
+| Nova Lima | todos os candidatos testados | DNS failure |
+| NFS-e Nacional | `/Visualizar?chaveAcesso=` | **HTTP 500** (requer sessão) |
 
-Cada município implementa `MunicipalConnector` com a mesma interface:
-- `lookup_ccm`
-- `download_company_registration`
-- `download_invoice`
+Esse mapeamento evitou implementar automações em URLs erradas e permitiu documentar limitações reais antes de escrever código.
 
-O pipeline principal não sabe qual portal está acessando. Isso permite adicionar novos municípios sem tocar no orquestrador.
+## Decisões por município
 
-## 6. Playwright para portais sem API
+### Belo Horizonte
+Portal `servicos.pbh.gov.br/nfse/autenticidade` retorna 200. Usa Sydle SPA com Web Components (Shadow DOM) — o formulário não renderiza sem JavaScript executado. Playwright navega ao portal e captura screenshot como evidência.
 
-Portais como BHISS Digital (BH) e Nota Carioca (RJ) não têm API pública estável. O Playwright em modo headless captura screenshots como evidência quando não consegue download direto do PDF.
+### Rio de Janeiro
+Nota Carioca `/documentos/verificacao.aspx` é um formulário ASP.NET WebForms. O Playwright preenche os campos `tbCPFCNPJ`, `tbNota` e `tbVerificacao` mas um CAPTCHA (`tbCaptchaControl`) bloqueia a submissão. Screenshot do formulário preenchido é salvo como evidência. Chaves longas são roteadas para NFS-e Nacional.
 
-**Estratégia de evidência progressiva:**
-1. Tentar download direto do PDF/XML via HTTP
-2. Se falhar, capturar screenshot da página de resultado como evidência
-3. Registrar o erro técnico exato (timeout, HTTP status, ausência de PDF)
+### Barueri
+ISSNet Online retorna HTTP 403 via Cloudflare para qualquer client headless. A CSP do Cloudflare também bloqueia `Page.captureScreenshot` via CDP. Solução: salvar arquivo `.txt` com URL, status HTTP e descrição do bloqueio como evidência da tentativa.
 
-## 7. Retry com backoff exponencial (tenacity)
+### Porto Alegre
+Todos os endpoints testados retornam NXDOMAIN. Chaves longas são roteadas para NFS-e Nacional. Códigos curtos registram INDISPONIVEL com mensagem descritiva.
 
-Portais municipais são instáveis. `@retry(stop=stop_after_attempt(3), wait=wait_exponential(...))` em todos os conectores garante resiliência sem sobrecarregar os servidores.
+### Nova Lima
+Município aderiu ao NFS-e Nacional em 01/01/2026. Portal municipal offline. Todas as notas da amostra (jan-abr/2026) são roteadas para NFS-e Nacional.
 
-## 8. Organização de evidências no filesystem
+### NFS-e Nacional
+Endpoint HTTP `/Visualizar?chaveAcesso=` retorna 500 sem sessão autenticada. Playwright navega ao portal `nfse.gov.br/EmissorNacional/` e captura screenshot da página de login como evidência. Autenticação é via gov.br — não automatizável sem credenciais.
 
-```
-output/evidencias/<MUNICIPIO>/<CNPJ>/          # cadastro da empresa
-output/evidencias/<MUNICIPIO>/<CNPJ>/notas/    # documentos de nota
-```
+## Cache SQLite
 
-Conforme especificado nas instruções. O slug do município usa ASCII sem acentos para compatibilidade cross-platform.
+Fornecedores aparecem duplicados na planilha com mesmo CNPJ e mesmo município. Sem cache, faríamos consultas idênticas ao portal para cada linha. O SQLite garante que a segunda linha reutilize o resultado da primeira, com chave `municipio::cnpj`.
 
-## 9. Coloração da planilha de saída
+## Tratamento de timeout e layout
 
-Linhas coloridas por status na planilha de resultado:
-- Verde: SUCESSO
-- Amarelo: PARCIAL (alguns downloads ok, outros não)
-- Vermelho: ERRO
-- Cinza: INDISPONIVEL
+Todos os conectores usam `tenacity` com `stop_after_attempt(3)` e `wait_exponential`. O Playwright usa `wait_until="domcontentloaded"` em vez de `networkidle` — portais com analytics e CDN externos nunca atingem `networkidle` dentro de 30s, gerando falsos erros de navegação.
 
-## 10. Verificação de URLs por HTTP antes de implementar
+## Saídas geradas
 
-Antes de implementar a automação, todos os endpoints foram verificados via `httpx` para confirmar disponibilidade real. Resultado:
+Por execução:
+- `output/resultado_<timestamp>.xlsx` — planilha com 9 colunas de resultado coloridas por status
+- `output/relatorio_<timestamp>.html` — relatório HTML com cards de resumo e screenshots embutidos em base64
+- `output/evidencias/<MUNICIPIO>/<CNPJ>/` — screenshot de cadastro
+- `output/evidencias/<MUNICIPIO>/<CNPJ>/notas/` — screenshot ou PDF da nota
 
-| Município | URL inicial (incorreta) | URL verificada | Status HTTP |
-|---|---|---|---|
-| Belo Horizonte | `bhiss.pbh.gov.br` | `servicos.pbh.gov.br/nfse/autenticidade` | 200 OK |
-| Barueri | `barueri.nfse.ig.com.br` | `issnetonline.com.br/webissnetonline/velo/autenticidade.jsf?id=12` | 403 Cloudflare |
-| Porto Alegre | `nfse.portoalegre.rs.gov.br` | — (todos com DNS failure) | NXDOMAIN |
-| Nova Lima | `nfse.novalima.mg.gov.br` | — (migrado para NFS-e Nacional em Jan/2026) | NXDOMAIN |
-| NFS-e Nacional | endpoint `/Visualizar?chaveAcesso=` | `www.nfse.gov.br/EmissorNacional/` (Playwright) | 500 (requer sessão) |
+## Limitações conhecidas e justificativas
 
-Motivo: implementar automação em URL errada gasta tempo e gera falsos negativos. A verificação HTTP antecipada permite documentar limitações reais antes de escrever código.
-
-## 11. Desafios encontrados
-
-**CCM não público**: nenhum dos 5 municípios da amostra expõe CCM sem autenticação no portal público. A POC registra isso como `INDISPONIVEL` e indica a necessidade de credenciais ou acesso via login.
-
-**Cloudflare em Barueri**: ISSNet retorna HTTP 403 com challenge JavaScript para qualquer client headless sem fingerprint de browser real. A CSP do Cloudflare também bloqueia `Page.captureScreenshot` via CDP. Solução: salvar evidência em arquivo `.txt` com URL e status HTTP.
-
-**NFS-e Nacional requer auth gov.br**: o endpoint `/Visualizar?chaveAcesso=` retorna HTTP 500 sem sessão autenticada. A POC navega ao portal via Playwright e captura screenshot da página de login como evidência da tentativa.
-
-**Portal RJ com CAPTCHA**: Nota Carioca `/documentos/verificacao.aspx` inclui campo `tbCaptchaControl`. A POC preenche CNPJ, número da nota e código de verificação mas não consegue submeter o formulário. Screenshot do formulário preenchido é salvo como evidência.
-
-**Porto Alegre e Nova Lima offline**: todos os endpoints DNS testados retornam NXDOMAIN. Nova Lima aderiu ao NFS-e Nacional em janeiro de 2026, tornando o portal municipal legado inacessível. Porto Alegre não tem endpoint público conhecido disponível.
-
-**`domcontentloaded` vs `networkidle`**: portais com muitos recursos externos (analytics, CDN) nunca atingem `networkidle` dentro do timeout de 30s. Uso de `domcontentloaded` reduz o timeout efetivo e evita falsos erros de navegação.
+| Limitação | Causa | Como foi tratado |
+|---|---|---|
+| CCM não encontrado em nenhum município | Nenhum portal expõe CCM sem autenticação | Registrado como INDISPONIVEL com mensagem técnica |
+| CAPTCHA no RJ | Nota Carioca exige resolução manual | Formulário preenchido + screenshot como evidência |
+| Cloudflare 403 em Barueri | ISSNet bloqueia headless browsers | Arquivo .txt com status HTTP como evidência |
+| NFS-e Nacional requer login gov.br | Portal não tem endpoint público sem sessão | Screenshot da página de login como evidência |
+| Portais POA e Nova Lima offline | DNS failure em todos os endpoints | INDISPONIVEL documentado; chaves longas via NFS-e Nacional |
