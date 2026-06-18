@@ -1,0 +1,14 @@
+{
+  "tipo_documento": "NFSE_NACIONAL",
+  "descricao": "NFS-e Nacional nº 1742 | Nova Lima/MG | comp. 2026-02",
+  "chave_acesso": "31448052203881239000106000000000174226025667332771",
+  "municipio_ou_uf": "Nova Lima/MG",
+  "cnpj_emitente": "03881239000106",
+  "cnpj_emitente_confere_fornecedor": "DIVERGE",
+  "modelo": null,
+  "serie": null,
+  "numero": 1742,
+  "competencia": "2026-02",
+  "digito_verificador_valido": null,
+  "_obs": "Dados extraídos e validados da chave fiscal. Não substitui o DANFSe oficial."
+}

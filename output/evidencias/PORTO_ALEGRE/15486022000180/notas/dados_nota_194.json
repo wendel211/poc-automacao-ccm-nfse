@@ -1,0 +1,14 @@
+{
+  "tipo_documento": "NFSE_NACIONAL",
+  "descricao": "NFS-e Nacional nº 194 | Porto Alegre/RS | comp. 2026-01",
+  "chave_acesso": "43149022215486022000180000000000019426010975619886",
+  "municipio_ou_uf": "Porto Alegre/RS",
+  "cnpj_emitente": "15486022000180",
+  "cnpj_emitente_confere_fornecedor": "OK",
+  "modelo": null,
+  "serie": null,
+  "numero": 194,
+  "competencia": "2026-01",
+  "digito_verificador_valido": null,
+  "_obs": "Dados extraídos e validados da chave fiscal. Não substitui o DANFSe oficial."
+}
