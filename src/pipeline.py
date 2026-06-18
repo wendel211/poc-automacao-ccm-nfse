@@ -20,6 +20,9 @@ from src.connectors.rio_de_janeiro import RioDeJaneiroConnector
 from src.database import Database
 from src.excel_handler import read_rows, write_results
 from src.models import InputRow, Municipio, RowResult, StatusExecucao
+from src.services.cnpj_lookup import CompanyData, fetch_company_data
+from src.utils.cnpj import normalize as normalize_cnpj
+from src.utils.fiscal_keys import TipoChave, decode as decode_chave
 from src.utils.filesystem import ensure_dirs
 
 _CONNECTORS: dict[Municipio, MunicipalConnector] = {
@@ -100,10 +103,24 @@ def _process_row(
     connector: MunicipalConnector,
     evidencias_base: Path,
     db: Database,
+    company_cache: dict[str, CompanyData],
 ) -> RowResult:
     company_dir, notes_dir = ensure_dirs(evidencias_base, row.municipio.value, row.cnpj_raw)
     now = datetime.now().isoformat(timespec="seconds")
 
+    # --- 1. Decodifica a chave fiscal (offline, sem depender de portal) -------
+    chave = decode_chave(row.cod_verificacao)
+    cnpj_confere = None
+    if chave.cnpj_emitente:
+        cnpj_confere = "OK" if chave.cnpj_emitente == row.cnpj else "DIVERGE"
+
+    # --- 2. Enriquece dados cadastrais da empresa via API pública -------------
+    company = company_cache.get(row.cnpj)
+    if company is None:
+        company = fetch_company_data(row.cnpj)
+        company_cache[row.cnpj] = company
+
+    # --- 3. CCM: cache → conector (não exposto publicamente, registra tentativa)
     ccm_cached = db.get_ccm(row.municipio.value, row.cnpj)
     if ccm_cached:
         ccm_value = ccm_cached
@@ -112,25 +129,38 @@ def _process_row(
         ccm_result = connector.lookup_ccm(row)
         ccm_value = ccm_result.ccm if ccm_result.found else None
         db.set_ccm(
-            row.municipio.value,
-            row.cnpj,
-            ccm_value,
+            row.municipio.value, row.cnpj, ccm_value,
             "SUCESSO" if ccm_result.found else "INDISPONIVEL",
         )
 
+    # --- 4. Captura de evidência no portal (screenshot quando possível) -------
     reg_result = connector.download_company_registration(row, company_dir)
     inv_result = connector.download_invoice(row, notes_dir)
 
-    successes = [reg_result.success, inv_result.success]
-    if all(successes):
+    # --- 5. Status baseado nos DADOS REAIS obtidos ----------------------------
+    chave_decodificada = chave.tipo != TipoChave.MUNICIPAL_CURTO
+    obteve_cadastro = company.found
+    obteve_documento = chave_decodificada or inv_result.success
+
+    notas = []
+    if obteve_cadastro:
+        notas.append(f"cadastro via {company.fonte}")
+    if chave_decodificada:
+        notas.append(chave.descricao)
+    if cnpj_confere == "DIVERGE":
+        notas.append("CNPJ emitente da chave diverge do fornecedor")
+    portal_msg = "; ".join(filter(None, [reg_result.error, inv_result.error]))
+
+    if obteve_cadastro and obteve_documento:
         status = StatusExecucao.SUCESSO
-        msg = None
-    elif any(successes):
+    elif obteve_cadastro or obteve_documento:
         status = StatusExecucao.PARCIAL
-        msg = "; ".join(filter(None, [reg_result.error, inv_result.error]))
     else:
         status = StatusExecucao.ERRO
-        msg = "; ".join(filter(None, [reg_result.error, inv_result.error]))
+
+    msg = "; ".join(filter(None, notas + ([portal_msg] if status != StatusExecucao.SUCESSO else [])))
+    if not msg:
+        msg = portal_msg or None
 
     logger.log(
         "SUCCESS" if status == StatusExecucao.SUCESSO else "WARNING",
@@ -154,6 +184,18 @@ def _process_row(
         status=status,
         mensagem_tecnica=msg,
         ccm_encontrado=ccm_value,
+        razao_social=company.razao_social,
+        situacao_cadastral=company.situacao_cadastral,
+        atividade_principal=company.atividade_principal,
+        fonte_cadastro=company.fonte,
+        tipo_documento=chave.tipo.value,
+        nota_municipio=chave.municipio or chave.uf,
+        nota_numero=str(chave.numero) if chave.numero is not None else None,
+        nota_competencia=chave.competencia,
+        cnpj_emitente_confere=cnpj_confere,
+        chave_dv_valido=(
+            None if chave.dv_valido is None else ("valido" if chave.dv_valido else "invalido")
+        ),
         arquivo_cadastro=reg_result.file_path,
         arquivo_nota_pdf=inv_path if inv_path and inv_path.endswith(".pdf") else None,
         arquivo_nota_xml=inv_path if inv_path and inv_path.endswith(".xml") else None,
@@ -172,6 +214,16 @@ def _write_jsonl_line(log_file: Path, result: RowResult, row: "InputRow") -> Non
         "status": result.status.value,
         "mensagem_tecnica": result.mensagem_tecnica,
         "ccm_encontrado": result.ccm_encontrado,
+        "razao_social": result.razao_social,
+        "situacao_cadastral": result.situacao_cadastral,
+        "atividade_principal": result.atividade_principal,
+        "fonte_cadastro": result.fonte_cadastro,
+        "tipo_documento": result.tipo_documento,
+        "nota_municipio": result.nota_municipio,
+        "nota_numero": result.nota_numero,
+        "nota_competencia": result.nota_competencia,
+        "cnpj_emitente_confere": result.cnpj_emitente_confere,
+        "chave_dv_valido": result.chave_dv_valido,
         "arquivo_cadastro": result.arquivo_cadastro,
         "arquivo_nota_pdf": result.arquivo_nota_pdf,
         "arquivo_nota_xml": result.arquivo_nota_xml,
@@ -198,6 +250,7 @@ def run(
 
     db = Database(output_dir / "poc.db")
     results: dict[str, RowResult] = {}
+    company_cache: dict[str, CompanyData] = {}
 
     rows = list(read_rows(input_path))
     total = len(rows)
@@ -219,7 +272,7 @@ def run(
                 _write_jsonl_line(jsonl_path, result, row)
                 continue
 
-            result = _process_row(row, connector, evidencias, db)
+            result = _process_row(row, connector, evidencias, db, company_cache)
             results[row.id_documento] = result
             _write_jsonl_line(jsonl_path, result, row)
             live.update(_build_table(rows, results, None))

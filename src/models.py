@@ -64,6 +64,19 @@ class RowResult(BaseModel):
     status: StatusExecucao
     mensagem_tecnica: Optional[str] = None
     ccm_encontrado: Optional[str] = None
+    # Dados cadastrais reais da empresa (enriquecimento via API pública)
+    razao_social: Optional[str] = None
+    situacao_cadastral: Optional[str] = None
+    atividade_principal: Optional[str] = None
+    fonte_cadastro: Optional[str] = None
+    # Dados extraídos e validados da chave fiscal (NFS-e Nacional / NF-e)
+    tipo_documento: Optional[str] = None
+    nota_municipio: Optional[str] = None
+    nota_numero: Optional[str] = None
+    nota_competencia: Optional[str] = None
+    cnpj_emitente_confere: Optional[str] = None
+    chave_dv_valido: Optional[str] = None
+    # Arquivos e metadados de execução
     arquivo_cadastro: Optional[str] = None
     arquivo_nota_pdf: Optional[str] = None
     arquivo_nota_xml: Optional[str] = None
