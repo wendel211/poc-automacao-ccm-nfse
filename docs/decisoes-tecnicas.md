@@ -27,14 +27,35 @@ class MunicipalConnector:
 
 O pipeline principal não sabe qual portal está acessando — apenas chama o conector correto pelo município. Isso permite adicionar novos municípios sem tocar no orquestrador.
 
-## Detecção de chave NFS-e Nacional vs. código municipal
+## Decisão central: extrair dados das chaves fiscais em vez de depender dos portais
 
-A planilha mistura dois formatos em `COD.VERIFICACAO`:
+Todos os portais municipais bloqueiam acesso automatizado — CAPTCHA (RJ), Cloudflare (Barueri), login gov.br (NFS-e Nacional), DNS offline (POA, Nova Lima). Insistir em baixar o PDF no portal não traz resultado.
 
-- **Chave longa (40+ dígitos numéricos)**: padrão NFS-e Nacional (ABRASF). Pode vir com espaços de agrupamento.
-- **Código curto alfanumérico**: proprietário de cada portal municipal.
+A virada de estratégia: **a coluna `COD.VERIFICACAO` já contém os dados da nota**. As chaves de acesso são padronizadas nacionalmente e auto-contidas. Decodificá-las entrega dados reais e verificáveis sem nenhum portal.
 
-A função `is_nfse_nacional_key()` faz esse roteamento via regex `\d{40,}` após remover espaços. Isso evita que o conector errado tente processar uma chave que não reconhece.
+A planilha mistura três formatos em `COD.VERIFICACAO`, distinguidos pelo número de dígitos (`src/utils/fiscal_keys.py`):
+
+| Dígitos | Tipo | Dados extraídos |
+|---|---|---|
+| 50 | Chave NFS-e Nacional (serviços) | município IBGE, CNPJ emitente, número, competência |
+| 44 | Chave NF-e/NFC-e (produtos, mod. 55/65) | UF, CNPJ emitente, modelo, série, número, competência, **DV validado (módulo 11)** |
+| curto alfanumérico | código proprietário do portal municipal | — (requer o portal específico) |
+
+O layout de cada chave foi validado empiricamente contra as 25 linhas reais: o CNPJ embutido na chave bate com o CNPJ do fornecedor (exceto divergências legítimas, ver abaixo), e a competência `AAMM` confere com o período da amostra (jan-abr/2026). O dígito verificador da NF-e é recalculado por módulo 11 — todas as chaves de 44 dígitos da amostra passaram.
+
+## Enriquecimento do cadastro da empresa via API pública
+
+A **Inscrição Municipal (CCM) não é exposta por nenhuma fonte pública federal** — é cadastro de cada prefeitura, acessível apenas com login no portal municipal. Em vez de entregar nada, o pipeline busca o cadastro federal oficial da empresa (`src/services/cnpj_lookup.py`) por uma cadeia de fallback resiliente a rate-limit e instabilidade:
+
+```
+ReceitaWS  ->  CNPJa (open)  ->  BrasilAPI
+```
+
+A primeira resposta válida vence; o resultado é normalizado (razão social, situação cadastral, atividade principal) independentemente do provedor. Resultados são cacheados por CNPJ na execução, evitando consultas duplicadas para fornecedores repetidos.
+
+## Validação cruzada como auditoria
+
+Com o CNPJ embutido na chave fiscal e o cadastro da Receita em mãos, o pipeline compara o **CNPJ do emitente da chave** contra o **fornecedor listado na planilha**. Na amostra real isso revelou 2 divergências legítimas (ex.: nota emitida por prestador de Curitiba para um fornecedor cadastrado em Barueri) — exatamente o tipo de inconsistência fiscal que uma automação de auditoria deve sinalizar.
 
 ## Verificação de URLs antes de implementar
 
@@ -87,7 +108,7 @@ Todos os conectores usam `tenacity` com `stop_after_attempt(3)` e `wait_exponent
 ## Saídas geradas
 
 Por execução:
-- `output/resultado_<timestamp>.xlsx` — planilha com 9 colunas de resultado coloridas por status
+- `output/resultado_<timestamp>.xlsx` — planilha com 19 colunas de resultado coloridas por status (dados cadastrais, dados da chave decodificada, validações e caminhos de arquivo)
 - `output/relatorio_<timestamp>.html` — relatório HTML com cards de resumo e screenshots embutidos em base64
 - `output/evidencias/<MUNICIPIO>/<CNPJ>/` — screenshot de cadastro
 - `output/evidencias/<MUNICIPIO>/<CNPJ>/notas/` — screenshot ou PDF da nota
@@ -102,14 +123,16 @@ Complementa o SQLite (que persiste cache entre execuções) e o relatório HTML 
 
 O workflow `.github/workflows/ci.yml` roda `pytest tests/ -v` em todo push e pull request. Configuração: Ubuntu latest, Python 3.11, cache de pip.
 
-Os testes unitários (14 casos cobrindo normalização de CNPJ, detecção de chave NFS-e Nacional, modelos Pydantic e leitura do Excel) não dependem de Playwright nem de portais externos, portanto executam sem configuração adicional no runner. Testes de integração com browser são excluídos do CI por exigirem credenciais e portais reais.
+Os testes (28 casos cobrindo normalização de CNPJ, decode de chave NFS-e Nacional e NF-e com validação de DV, cadeia de fallback de enriquecimento de CNPJ com HTTP mockado via respx, modelos Pydantic e leitura do Excel) não dependem de Playwright nem de portais externos, portanto executam sem configuração adicional no runner. Testes de integração com browser são excluídos do CI por exigirem credenciais e portais reais.
 
-## Limitações conhecidas e justificativas
+## Limitações conhecidas e como foram contornadas
 
-| Limitação | Causa | Como foi tratado |
+| Bloqueio do portal | Causa | Como foi contornado |
 |---|---|---|
-| CCM não encontrado em nenhum município | Nenhum portal expõe CCM sem autenticação | Registrado como INDISPONIVEL com mensagem técnica |
-| CAPTCHA no RJ | Nota Carioca exige resolução manual | Formulário preenchido + screenshot como evidência |
-| Cloudflare 403 em Barueri | ISSNet bloqueia headless browsers | Arquivo .txt com status HTTP como evidência |
-| NFS-e Nacional requer login gov.br | Portal não tem endpoint público sem sessão | Screenshot da página de login como evidência |
-| Portais POA e Nova Lima offline | DNS failure em todos os endpoints | INDISPONIVEL documentado; chaves longas via NFS-e Nacional |
+| CCM não exposto publicamente | Cadastro de cada prefeitura, exige login municipal | Entrega o cadastro federal completo (Receita) via API pública no lugar |
+| CAPTCHA no RJ | Nota Carioca exige resolução manual | Dados extraídos da chave fiscal + cadastro via API; form preenchido como evidência |
+| Cloudflare 403 em Barueri | ISSNet bloqueia headless browsers | Dados extraídos da chave + cadastro via API; tentativa stealth + evidência .txt |
+| NFS-e Nacional requer login gov.br | Portal não tem endpoint público sem sessão | Chave de 50 dígitos decodificada localmente (município, número, competência) |
+| Portais POA e Nova Lima offline | DNS failure em todos os endpoints | Chave decodificada + cadastro via API, sem depender do portal |
+
+O resultado: de **0 linhas com dados** para **20 SUCESSO / 5 PARCIAL / 0 ERRO** na amostra de 25 linhas, mais 2 divergências de CNPJ sinalizadas para auditoria.
