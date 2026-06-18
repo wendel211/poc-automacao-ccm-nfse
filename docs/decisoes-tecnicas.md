@@ -57,6 +57,19 @@ A primeira resposta válida vence; o resultado é normalizado (razão social, si
 
 Com o CNPJ embutido na chave fiscal e o cadastro da Receita em mãos, o pipeline compara o **CNPJ do emitente da chave** contra o **fornecedor listado na planilha**. Na amostra real isso revelou 2 divergências legítimas (ex.: nota emitida por prestador de Curitiba para um fornecedor cadastrado em Barueri) — exatamente o tipo de inconsistência fiscal que uma automação de auditoria deve sinalizar.
 
+## Materialização dos documentos como arquivos baixáveis
+
+Os portais não liberam o download do cadastro nem do PDF da nota sem autenticação. Em vez de entregar só colunas na planilha, o pipeline materializa os dados obtidos em arquivos reais no disco (`src/services/document_builder.py`):
+
+- **Comprovante de Cadastro (PDF)** por empresa, gerado com `reportlab` a partir do cadastro federal — razão social, situação, natureza jurídica, atividade, endereço. Traz aviso de procedência: é o equivalente público ao cadastro municipal que o portal não libera, e não substitui a Inscrição Municipal oficial.
+- **Dados da Nota (JSON)** por nota com chave decodificável — município/UF, CNPJ emitente, modelo, série, número, competência, validação de DV e o resultado da conferência de CNPJ.
+
+Esses artefatos são o "download" possível e honesto: dados verificáveis de fontes públicas, claramente rotulados quanto à origem.
+
+## Tentativa de consulta pública NFS-e Nacional
+
+A Consulta Pública oficial (`nfse.gov.br/consultapublica/?tpc=1&chave=...`) aceita a chave na query string e renderiza a página da nota específica — usada como evidência via Playwright, bem melhor que a home de login. A consulta final dos dados, porém, é protegida por **hCaptcha**, então os dados em si vêm do decodificador da chave, não do scraping. Endpoints diretos de DANFSe (`/Visualizar`, `/Danfse`) retornam HTTP 500/404 por exigirem sessão autenticada — confirmado por teste com httpx e Playwright.
+
 ## Verificação de URLs antes de implementar
 
 Antes de escrever qualquer automação, todos os endpoints foram verificados via `httpx`. Resultado:
@@ -108,7 +121,9 @@ Todos os conectores usam `tenacity` com `stop_after_attempt(3)` e `wait_exponent
 ## Saídas geradas
 
 Por execução:
-- `output/resultado_<timestamp>.xlsx` — planilha com 19 colunas de resultado coloridas por status (dados cadastrais, dados da chave decodificada, validações e caminhos de arquivo)
+- `output/resultado_<timestamp>.xlsx` — planilha com 20 colunas de resultado coloridas por status (dados cadastrais, dados da chave decodificada, validações e caminhos de arquivo)
+- `output/evidencias/<MUNICIPIO>/<CNPJ>/comprovante_cadastro_<CNPJ>.pdf` — comprovante de cadastro gerado
+- `output/evidencias/<MUNICIPIO>/<CNPJ>/notas/dados_nota_<n>.json` — dados decodificados da nota
 - `output/relatorio_<timestamp>.html` — relatório HTML com cards de resumo e screenshots embutidos em base64
 - `output/evidencias/<MUNICIPIO>/<CNPJ>/` — screenshot de cadastro
 - `output/evidencias/<MUNICIPIO>/<CNPJ>/notas/` — screenshot ou PDF da nota
@@ -123,7 +138,7 @@ Complementa o SQLite (que persiste cache entre execuções) e o relatório HTML 
 
 O workflow `.github/workflows/ci.yml` roda `pytest tests/ -v` em todo push e pull request. Configuração: Ubuntu latest, Python 3.11, cache de pip.
 
-Os testes (28 casos cobrindo normalização de CNPJ, decode de chave NFS-e Nacional e NF-e com validação de DV, cadeia de fallback de enriquecimento de CNPJ com HTTP mockado via respx, modelos Pydantic e leitura do Excel) não dependem de Playwright nem de portais externos, portanto executam sem configuração adicional no runner. Testes de integração com browser são excluídos do CI por exigirem credenciais e portais reais.
+Os testes (30 casos cobrindo normalização de CNPJ, decode de chave NFS-e Nacional e NF-e com validação de DV, cadeia de fallback de enriquecimento de CNPJ com HTTP mockado via respx, geração de artefatos PDF/JSON, modelos Pydantic e leitura do Excel) não dependem de Playwright nem de portais externos, portanto executam sem configuração adicional no runner. Testes de integração com browser são excluídos do CI por exigirem credenciais e portais reais.
 
 ## Limitações conhecidas e como foram contornadas
 

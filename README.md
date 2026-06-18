@@ -72,15 +72,20 @@ docker compose run --rm pipeline
 
 ```
 output/
-├── resultado_<timestamp>.xlsx       # planilha com 9 colunas de resultado
+├── resultado_<timestamp>.xlsx       # planilha com 20 colunas de resultado
 ├── relatorio_<timestamp>.html       # relatório HTML com screenshots embutidos
+├── logs/execution_<timestamp>.jsonl # log estruturado por linha
 └── evidencias/
     └── <MUNICIPIO>/
         └── <CNPJ>/
-            ├── cadastro_<CNPJ>.png
+            ├── comprovante_cadastro_<CNPJ>.pdf  # cadastro gerado a partir dos dados da Receita
+            ├── cadastro_<CNPJ>.png              # screenshot do portal (evidência)
             └── notas/
-                └── nota_<cod>.png
+                ├── dados_nota_<n>.json          # dados decodificados e validados da chave
+                └── nfse_nacional_<chave>.png    # screenshot do portal (evidência)
 ```
+
+Além das colunas na planilha, cada empresa recebe um **comprovante de cadastro em PDF** (gerado a partir dos dados da Receita) e cada nota com chave decodificável recebe um **JSON estruturado** com os campos extraídos e validados — artefatos baixáveis reais, já que os portais não liberam o download oficial.
 
 ### Colunas adicionadas na planilha
 
@@ -99,7 +104,8 @@ output/
 | `NOTA_COMPETENCIA` | Competência (AAAA-MM) extraída da chave |
 | `CNPJ_EMITENTE_CONFERE` | OK / DIVERGE — validação do CNPJ da chave vs. fornecedor |
 | `CHAVE_DV_VALIDO` | Validação do dígito verificador (NF-e, módulo 11) |
-| `ARQUIVO_CADASTRO` | Caminho do cadastro municipal |
+| `ARQUIVO_CADASTRO` | Caminho do comprovante de cadastro em PDF gerado |
+| `ARQUIVO_DADOS_NOTA` | Caminho do JSON com os dados decodificados da nota |
 | `ARQUIVO_NOTA_PDF` | Caminho do PDF da nota |
 | `ARQUIVO_NOTA_XML` | Caminho do XML da nota |
 | `ARQUIVO_EVIDENCIA` | Screenshot PNG de evidência |
@@ -122,6 +128,7 @@ Pipeline (rich live table)
     ├── Pydantic        — valida e normaliza cada linha
     ├── fiscal_keys     — decodifica chave NFS-e Nacional (50d) / NF-e (44d) + valida DV
     ├── cnpj_lookup     — enriquece cadastro via API pública (fallback chain)
+    ├── document_builder — gera comprovante PDF + JSON da nota (artefatos baixáveis)
     ├── SQLite          — cache de CCM por municipio::cnpj
     │
     └── MunicipalConnector (Strategy Pattern)
@@ -150,7 +157,7 @@ output/
 python -m pytest tests/ -v
 ```
 
-28 testes cobrindo: normalização CNPJ, **decode de chave NFS-e Nacional e NF-e com validação de DV (módulo 11)**, **cadeia de fallback de enriquecimento de CNPJ (HTTP mockado com respx)**, validação de modelos Pydantic, leitura do xlsx (25 linhas, 5 municípios, unicidade de cache key).
+30 testes cobrindo: normalização CNPJ, **decode de chave NFS-e Nacional e NF-e com validação de DV (módulo 11)**, **cadeia de fallback de enriquecimento de CNPJ (HTTP mockado com respx)**, **geração de artefatos (PDF de cadastro e JSON da nota)**, validação de modelos Pydantic, leitura do xlsx (25 linhas, 5 municípios, unicidade de cache key).
 
 ---
 
