@@ -21,6 +21,10 @@ from src.database import Database
 from src.excel_handler import read_rows, write_results
 from src.models import InputRow, Municipio, RowResult, StatusExecucao
 from src.services.cnpj_lookup import CompanyData, fetch_company_data
+from src.services.document_builder import (
+    build_company_registration_pdf,
+    build_note_data_file,
+)
 from src.utils.cnpj import normalize as normalize_cnpj
 from src.utils.fiscal_keys import TipoChave, decode as decode_chave
 from src.utils.filesystem import ensure_dirs
@@ -137,8 +141,16 @@ def _process_row(
     reg_result = connector.download_company_registration(row, company_dir)
     inv_result = connector.download_invoice(row, notes_dir)
 
-    # --- 5. Status baseado nos DADOS REAIS obtidos ----------------------------
+    # --- 5. Materializa artefatos baixáveis a partir dos dados obtidos --------
+    cadastro_pdf = None
+    if company.found:
+        cadastro_pdf = str(build_company_registration_pdf(company, company_dir))
+    nota_json = None
     chave_decodificada = chave.tipo != TipoChave.MUNICIPAL_CURTO
+    if chave_decodificada:
+        nota_json = str(build_note_data_file(chave, notes_dir, cnpj_confere))
+
+    # --- 6. Status baseado nos DADOS REAIS obtidos ----------------------------
     obteve_cadastro = company.found
     obteve_documento = chave_decodificada or inv_result.success
 
@@ -196,7 +208,8 @@ def _process_row(
         chave_dv_valido=(
             None if chave.dv_valido is None else ("valido" if chave.dv_valido else "invalido")
         ),
-        arquivo_cadastro=reg_result.file_path,
+        arquivo_cadastro=cadastro_pdf or reg_result.file_path,
+        arquivo_dados_nota=nota_json,
         arquivo_nota_pdf=inv_path if inv_path and inv_path.endswith(".pdf") else None,
         arquivo_nota_xml=inv_path if inv_path and inv_path.endswith(".xml") else None,
         arquivo_evidencia=inv_path if inv_path and inv_path.endswith(".png") else None,
@@ -225,6 +238,7 @@ def _write_jsonl_line(log_file: Path, result: RowResult, row: "InputRow") -> Non
         "cnpj_emitente_confere": result.cnpj_emitente_confere,
         "chave_dv_valido": result.chave_dv_valido,
         "arquivo_cadastro": result.arquivo_cadastro,
+        "arquivo_dados_nota": result.arquivo_dados_nota,
         "arquivo_nota_pdf": result.arquivo_nota_pdf,
         "arquivo_nota_xml": result.arquivo_nota_xml,
         "arquivo_evidencia": result.arquivo_evidencia,
