@@ -27,6 +27,9 @@ _NFSE_NACIONAL_VISUALIZAR = (
     "https://www.nfse.gov.br/EmissorNacional/Nfse/Visualizar?chaveAcesso={key}"
 )
 _NFSE_NACIONAL_HOME = "https://www.nfse.gov.br/EmissorNacional/"
+# Consulta pública oficial (aceita a chave na query string e renderiza a página
+# da nota específica — evidência muito melhor que a home de login).
+_NFSE_NACIONAL_CONSULTA = "https://www.nfse.gov.br/consultapublica/?tpc=1&chave={key}"
 
 _STEALTH_UA = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
@@ -408,17 +411,20 @@ def capture_nova_lima_company(row: InputRow, dest_dir: Path) -> DownloadResult:
 
 def capture_nfse_nacional(row: InputRow, dest_dir: Path, chave: str) -> DownloadResult:
     """
-    Navega diretamente à URL de visualização com a chaveAcesso completa.
-    O portal exige autenticação gov.br para exibir o XML — a URL específica
-    por chave mostra o estado real (documento ou redirect para login com a
-    chave pré-carregada), diferentemente de apenas capturar a home page.
+    Captura evidência da nota no portal público da NFS-e Nacional.
+
+    Usa a Consulta Pública oficial (`/consultapublica/?tpc=1&chave=...`), que
+    aceita a chave na query string e renderiza a página da nota específica —
+    evidência muito melhor que a home de login. A consulta final dos dados é
+    protegida por hCaptcha; os dados da nota já foram extraídos da chave pelo
+    decodificador, então aqui capturamos a página de consulta como comprovante.
     """
     sync_playwright = _try_import_playwright()
     if not sync_playwright:
         return DownloadResult(success=False, error="Playwright não instalado")
 
     safe_chave = chave.replace(" ", "")
-    url_visualizar = _NFSE_NACIONAL_VISUALIZAR.format(key=safe_chave)
+    url_consulta = _NFSE_NACIONAL_CONSULTA.format(key=safe_chave)
     safe_name = safe_chave[:30]
 
     try:
@@ -427,30 +433,19 @@ def capture_nfse_nacional(row: InputRow, dest_dir: Path, chave: str) -> Download
             ctx = _stealth_context(browser)
             page = ctx.new_page()
             logger.info(
-                "NFS-e Nacional: navegando URL com chave {}... ({})",
+                "NFS-e Nacional: consulta pública com chave {}... ({})",
                 safe_chave[:12], row.id_documento,
             )
-            resp = page.goto(url_visualizar, timeout=30000, wait_until="domcontentloaded")
+            resp = page.goto(url_consulta, timeout=30000, wait_until="domcontentloaded")
             status = resp.status if resp else None
-
-            if status and status >= 500:
-                # Routing bug no servidor NFS-e Nacional para esta rota — fallback para home
-                logger.warning(
-                    "NFS-e Nacional: Visualizar retornou {} — fallback para home page", status
-                )
-                page.goto(_NFSE_NACIONAL_HOME, timeout=20000, wait_until="domcontentloaded")
-
+            page.wait_for_timeout(1500)  # deixa o SPA renderizar o formulário com a chave
             screenshot = _screenshot(page, dest_dir, f"nfse_nacional_{safe_name}")
             browser.close()
 
         error = None
-        if status and status >= 500:
-            error = (
-                f"NFS-e Nacional retornou HTTP {status} na URL de visualização "
-                f"(chave {safe_chave[:16]}...) — "
-                "autenticação gov.br necessária para acessar o documento"
-            )
-        return DownloadResult(success=True, file_path=str(screenshot), error=error)
+        if not status or status >= 400:
+            error = f"Consulta pública NFS-e retornou HTTP {status}"
+        return DownloadResult(success=status == 200, file_path=str(screenshot), error=error)
     except Exception as exc:
         logger.error("NFS-e Nacional capture error: {}", exc)
         return DownloadResult(success=False, error=str(exc))
