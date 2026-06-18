@@ -163,8 +163,13 @@ for item in [
     "Validação cruzada de auditoria: o CNPJ do emitente embutido na chave é comparado "
     "ao fornecedor listado na planilha, sinalizando divergências fiscais.",
 
+    "Materialização em arquivos baixáveis: cada empresa recebe um comprovante de "
+    "cadastro em PDF (gerado dos dados da Receita) e cada nota com chave decodificável "
+    "recebe um JSON estruturado com os campos extraídos e validados.",
+
     "Tentativas de captura nos portais foram mantidas como evidência (Shadow DOM "
-    "piercing em BH, contexto stealth em Barueri, formulário preenchido no RJ).",
+    "piercing em BH, contexto stealth em Barueri, formulário preenchido no RJ, página "
+    "de consulta pública oficial no NFS-e Nacional).",
 ]:
     bullet(item)
 para(sa=6)
@@ -205,10 +210,11 @@ for item in [
     "Decodificador de chaves fiscais próprio (NFS-e Nacional 50 dígitos e NF-e/NFC-e 44 dígitos) com validação de dígito verificador por módulo 11.",
     "httpx + tenacity para requisições HTTP com retry; cadeia de fallback de enriquecimento de CNPJ (ReceitaWS, CNPJa, BrasilAPI).",
     "Playwright (Chromium headless) com Shadow DOM piercing e contexto stealth para tentativa de captura nos portais.",
+    "reportlab para gerar o comprovante de cadastro em PDF a partir dos dados da Receita.",
     "Rich para tabela de progresso ao vivo no terminal durante a execução.",
     "SQLite para cache de CCM por municipio::cnpj, evitando consultas duplicadas.",
     "Docker / docker-compose para execução reproduzível em qualquer ambiente.",
-    "GitHub Actions (CI) para execução automática dos 28 testes a cada push.",
+    "GitHub Actions (CI) para execução automática dos 30 testes a cada push.",
     "openpyxl / pandas para leitura da planilha de entrada e escrita dos resultados.",
     "loguru para logs estruturados; JSONL por execução para auditoria linha a linha.",
 ]:
@@ -218,10 +224,12 @@ para(sa=4)
 # ── 7. Arquivos Gerados ───────────────────────────────────────────────────────
 heading("7. Arquivos Gerados por Execução")
 for item in [
-    "output/resultado_<timestamp>.xlsx — planilha com 19 colunas de resultado (dados cadastrais, dados da chave decodificada, validações e caminhos de arquivo), coloridas por status.",
+    "output/resultado_<timestamp>.xlsx — planilha com 20 colunas de resultado (dados cadastrais, dados da chave decodificada, validações e caminhos de arquivo), coloridas por status.",
     "output/relatorio_<timestamp>.html — relatório HTML com cards de resumo e screenshots embutidos.",
     "output/logs/execution_<timestamp>.jsonl — log estruturado com uma entrada JSON por linha processada.",
-    "output/evidencias/<MUNICIPIO>/<CNPJ>/ — screenshots de cadastro e notas fiscais por empresa.",
+    "output/evidencias/<MUNICIPIO>/<CNPJ>/comprovante_cadastro_<CNPJ>.pdf — comprovante de cadastro gerado.",
+    "output/evidencias/<MUNICIPIO>/<CNPJ>/notas/dados_nota_<n>.json — dados decodificados e validados da nota.",
+    "output/evidencias/<MUNICIPIO>/<CNPJ>/ — screenshots dos portais como evidência das tentativas.",
 ]:
     bullet(item)
 para(sa=4)
