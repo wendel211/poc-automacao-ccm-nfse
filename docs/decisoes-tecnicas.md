@@ -55,13 +55,15 @@ Esse mapeamento evitou implementar automações em URLs erradas e permitiu docum
 ## Decisões por município
 
 ### Belo Horizonte
-Portal `servicos.pbh.gov.br/nfse/autenticidade` retorna 200. Usa Sydle SPA com Web Components (Shadow DOM) — o formulário não renderiza sem JavaScript executado. Playwright navega ao portal e captura screenshot como evidência.
+Portal `servicos.pbh.gov.br/nfse/autenticidade` retorna 200. Usa Sydle SPA com Web Components (Shadow DOM) — o formulário é renderizado por ES modules (`@sydle/pbh-components`) dentro de shadow roots profundos. A interação com `page.fill()` direto não funciona.
+
+Solução implementada: `wait_for_function()` aguarda a presença de shadow roots no DOM (SPA inicializada), depois `page.evaluate()` executa JavaScript recursivo que percorre todos os shadow roots e preenche o primeiro input visível usando o native property setter (`Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set`) para disparar os eventos corretamente no framework. Em seguida, outra `evaluate()` recursiva localiza e clica no botão de consulta. O resultado (ou a tela com o campo preenchido) é capturado como evidência.
 
 ### Rio de Janeiro
-Nota Carioca `/documentos/verificacao.aspx` é um formulário ASP.NET WebForms. O Playwright preenche os campos `tbCPFCNPJ`, `tbNota` e `tbVerificacao` mas um CAPTCHA (`tbCaptchaControl`) bloqueia a submissão. Screenshot do formulário preenchido é salvo como evidência. Chaves longas são roteadas para NFS-e Nacional.
+Nota Carioca `/documentos/verificacao.aspx` é um formulário ASP.NET WebForms. O Playwright preenche os campos `tbCPFCNPJ`, `tbNota` e `tbVerificacao` (o ViewState é gerenciado automaticamente pelo Playwright, que executa o JavaScript da página). O CAPTCHA (`tbCaptchaControl`) bloqueia a submissão. Screenshot do formulário preenchido é salvo como evidência. Chaves longas são roteadas para NFS-e Nacional. Portal verificado como offline (ConnectError) em jun/2026.
 
 ### Barueri
-ISSNet Online retorna HTTP 403 via Cloudflare para qualquer client headless. A CSP do Cloudflare também bloqueia `Page.captureScreenshot` via CDP. Solução: salvar arquivo `.txt` com URL, status HTTP e descrição do bloqueio como evidência da tentativa.
+ISSNet Online retorna HTTP 403 via Cloudflare para qualquer client headless básico. Estratégia de contorno implementada: contexto Playwright com `--disable-blink-features=AutomationControlled`, User-Agent Chrome/120 realista, viewport 1920×1080, `locale=pt-BR`, `timezone_id=America/Sao_Paulo` e `add_init_script` injetando `navigator.webdriver = undefined` antes de qualquer script da página. Quando a CSP do Cloudflare ainda bloqueia `Page.captureScreenshot`, salva `.txt` com URL, status HTTP e descrição completa da tentativa.
 
 ### Porto Alegre
 Todos os endpoints testados retornam NXDOMAIN. Chaves longas são roteadas para NFS-e Nacional. Códigos curtos registram INDISPONIVEL com mensagem descritiva.
@@ -70,7 +72,9 @@ Todos os endpoints testados retornam NXDOMAIN. Chaves longas são roteadas para 
 Município aderiu ao NFS-e Nacional em 01/01/2026. Portal municipal offline. Todas as notas da amostra (jan-abr/2026) são roteadas para NFS-e Nacional.
 
 ### NFS-e Nacional
-Endpoint HTTP `/Visualizar?chaveAcesso=` retorna 500 sem sessão autenticada. Playwright navega ao portal `nfse.gov.br/EmissorNacional/` e captura screenshot da página de login como evidência. Autenticação é via gov.br — não automatizável sem credenciais.
+O endpoint `/Visualizar?chaveAcesso={key}` retorna HTTP 500 com erro de roteamento ASP.NET MVC no servidor (`"Foram encontrados vários tipos que correspondem ao controlador 'Nfse'"`) — bug no lado do servidor, não na requisição. Tentativas com httpx e Playwright confirmam o mesmo comportamento.
+
+Estratégia implementada: Playwright navega diretamente à URL `Visualizar?chaveAcesso={key}` (não à home page genérica). Ao receber 500, registra o erro e faz fallback para a home page do EmissorNacional, capturando o estado com a tentativa documentada. Autenticação é via gov.br — não automatizável sem credenciais.
 
 ## Cache SQLite
 
