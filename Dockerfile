@@ -11,12 +11,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 COPY pyproject.toml ./
+COPY src/ ./src/
 RUN pip install -e ".[dev]" 2>/dev/null || pip install \
-    pandas openpyxl pydantic httpx tenacity loguru typer playwright rich
+    pandas openpyxl pydantic httpx tenacity loguru typer playwright rich reportlab respx
 
 RUN python -m playwright install chromium --with-deps
 
-COPY src/ ./src/
 COPY input/ ./input/
 
 RUN mkdir -p output/evidencias
