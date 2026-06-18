@@ -1,3 +1,11 @@
+# Artefatos binários — nunca aplicar conversão de fim de linha
+*.pdf binary
+*.png binary
+*.xlsx binary
+
+# Estatísticas de linguagem do GitHub — marcar saídas geradas
 output/**/*.html linguist-generated=true
 output/**/*.xlsx linguist-generated=true
-output/**/*.txt linguist-generated=true
+output/**/*.pdf  linguist-generated=true
+output/**/*.json linguist-generated=true
+output/**/*.txt  linguist-generated=true
