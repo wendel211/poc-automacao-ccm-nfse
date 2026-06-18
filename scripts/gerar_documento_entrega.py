@@ -160,6 +160,14 @@ for item in [
     "por uma cadeia de fallback entre APIs públicas (ReceitaWS, CNPJa, BrasilAPI), "
     "retornando razão social, situação cadastral e atividade principal.",
 
+    "Busca oficial na NFS-e Federal: o canal sancionado para baixar a nota por chave é "
+    "a API SEFIN Nacional, que exige certificado digital ICP-Brasil (e-CNPJ A1) via mTLS "
+    "— o endpoint responde 496 (SSL certificate required) sem ele. O cliente está "
+    "implementado e pronto para produção: com o certificado da empresa configurado, "
+    "baixa o XML real da nota; sem ele, registra a tentativa. Os portais públicos não "
+    "permitem fetch programático (consulta pública com hCaptcha, Emissor com login gov.br), "
+    "o que foi verificado empiricamente.",
+
     "Validação cruzada de auditoria: o CNPJ do emitente embutido na chave é comparado "
     "ao fornecedor listado na planilha, sinalizando divergências fiscais.",
 
@@ -214,7 +222,8 @@ for item in [
     "Rich para tabela de progresso ao vivo no terminal durante a execução.",
     "SQLite para cache de CCM por municipio::cnpj, evitando consultas duplicadas.",
     "Docker / docker-compose para execução reproduzível em qualquer ambiente.",
-    "GitHub Actions (CI) para execução automática dos 30 testes a cada push.",
+    "Cliente SEFIN Nacional com httpx mTLS (certificado ICP-Brasil) para o fetch oficial da NFS-e Federal por chave.",
+    "GitHub Actions (CI) para execução automática dos 33 testes a cada push.",
     "openpyxl / pandas para leitura da planilha de entrada e escrita dos resultados.",
     "loguru para logs estruturados; JSONL por execução para auditoria linha a linha.",
 ]:
