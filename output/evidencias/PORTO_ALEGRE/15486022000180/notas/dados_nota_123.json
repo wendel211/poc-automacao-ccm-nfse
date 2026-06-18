@@ -1,0 +1,14 @@
+{
+  "tipo_documento": "NFSE_NACIONAL",
+  "descricao": "NFS-e Nacional nº 123 | Porto Alegre/RS | comp. 2025-12",
+  "chave_acesso": "43149022215486022000180000000000012325128774827539",
+  "municipio_ou_uf": "Porto Alegre/RS",
+  "cnpj_emitente": "15486022000180",
+  "cnpj_emitente_confere_fornecedor": "OK",
+  "modelo": null,
+  "serie": null,
+  "numero": 123,
+  "competencia": "2025-12",
+  "digito_verificador_valido": null,
+  "_obs": "Dados extraídos e validados da chave fiscal. Não substitui o DANFSe oficial."
+}

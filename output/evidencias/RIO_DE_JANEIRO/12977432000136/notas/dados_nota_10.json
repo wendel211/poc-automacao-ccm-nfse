@@ -1,0 +1,14 @@
+{
+  "tipo_documento": "NFSE_NACIONAL",
+  "descricao": "NFS-e Nacional nº 10 | Rio de Janeiro/RJ | comp. 2026-01",
+  "chave_acesso": "33045572212977432000136000000000001026010690267031",
+  "municipio_ou_uf": "Rio de Janeiro/RJ",
+  "cnpj_emitente": "12977432000136",
+  "cnpj_emitente_confere_fornecedor": "OK",
+  "modelo": null,
+  "serie": null,
+  "numero": 10,
+  "competencia": "2026-01",
+  "digito_verificador_valido": null,
+  "_obs": "Dados extraídos e validados da chave fiscal. Não substitui o DANFSe oficial."
+}

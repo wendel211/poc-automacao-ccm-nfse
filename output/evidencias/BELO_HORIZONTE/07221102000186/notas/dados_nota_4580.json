@@ -1,0 +1,14 @@
+{
+  "tipo_documento": "NFE",
+  "descricao": "NF-e nº 4580 série 001 | MG | comp. 2026-02",
+  "chave_acesso": "31260207221102000186550010000045801593623410",
+  "municipio_ou_uf": "MG",
+  "cnpj_emitente": "07221102000186",
+  "cnpj_emitente_confere_fornecedor": "OK",
+  "modelo": "55",
+  "serie": "001",
+  "numero": 4580,
+  "competencia": "2026-02",
+  "digito_verificador_valido": true,
+  "_obs": "Dados extraídos e validados da chave fiscal. Não substitui o DANFSe oficial."
+}

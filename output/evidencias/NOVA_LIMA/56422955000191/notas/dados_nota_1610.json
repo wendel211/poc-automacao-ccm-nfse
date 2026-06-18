@@ -1,0 +1,14 @@
+{
+  "tipo_documento": "NFSE_NACIONAL",
+  "descricao": "NFS-e Nacional nº 1610 | Nova Lima/MG | comp. 2026-01",
+  "chave_acesso": "31448052256422955000191000000000161026010030879562",
+  "municipio_ou_uf": "Nova Lima/MG",
+  "cnpj_emitente": "56422955000191",
+  "cnpj_emitente_confere_fornecedor": "OK",
+  "modelo": null,
+  "serie": null,
+  "numero": 1610,
+  "competencia": "2026-01",
+  "digito_verificador_valido": null,
+  "_obs": "Dados extraídos e validados da chave fiscal. Não substitui o DANFSe oficial."
+}

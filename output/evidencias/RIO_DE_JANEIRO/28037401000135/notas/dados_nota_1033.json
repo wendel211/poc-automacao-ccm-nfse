@@ -1,0 +1,14 @@
+{
+  "tipo_documento": "NFE",
+  "descricao": "NF-e nº 1033 série 001 | RJ | comp. 2026-02",
+  "chave_acesso": "33260228037401000135550010000010331000284328",
+  "municipio_ou_uf": "RJ",
+  "cnpj_emitente": "28037401000135",
+  "cnpj_emitente_confere_fornecedor": "OK",
+  "modelo": "55",
+  "serie": "001",
+  "numero": 1033,
+  "competencia": "2026-02",
+  "digito_verificador_valido": true,
+  "_obs": "Dados extraídos e validados da chave fiscal. Não substitui o DANFSe oficial."
+}
