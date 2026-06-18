@@ -79,6 +79,14 @@ python -m src.main input/janabril2026_amostra_5x5.xlsx
 docker compose run --rm pipeline
 ```
 
+### Demonstração da busca na NFS-e Federal (SEFIN + mTLS)
+
+```bash
+python scripts/demo_sefin.py
+```
+
+Mostra ao vivo: (1) que os endpoints oficiais respondem `496/403` sem certificado, (2) o cliente degradando com mensagem clara, e (3) o caminho de download real quando um e-CNPJ A1 está configurado.
+
 ---
 
 ## Saídas geradas
