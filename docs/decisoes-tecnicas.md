@@ -66,9 +66,15 @@ Os portais não liberam o download do cadastro nem do PDF da nota sem autentica�
 
 Esses artefatos são o "download" possível e honesto: dados verificáveis de fontes públicas, claramente rotulados quanto à origem.
 
-## Tentativa de consulta pública NFS-e Nacional
+## Busca oficial na NFS-e Federal: API SEFIN Nacional com mTLS
 
-A Consulta Pública oficial (`nfse.gov.br/consultapublica/?tpc=1&chave=...`) aceita a chave na query string e renderiza a página da nota específica — usada como evidência via Playwright, bem melhor que a home de login. A consulta final dos dados, porém, é protegida por **hCaptcha**, então os dados em si vêm do decodificador da chave, não do scraping. Endpoints diretos de DANFSe (`/Visualizar`, `/Danfse`) retornam HTTP 500/404 por exigirem sessão autenticada — confirmado por teste com httpx e Playwright.
+O canal **sancionado** para baixar a NFS-e Nacional por chave de acesso é a API SEFIN/ADN Nacional. Ela exige autenticação por **certificado digital ICP-Brasil** (e-CNPJ A1, por exemplo) via mTLS — comprovado empiricamente: `adn.nfse.gov.br/contribuinteisn/nfse/{chave}` responde **HTTP 496 (SSL certificate required)** e `sefin.nfse.gov.br/sefinnacional/nfse/{chave}` responde 403 para requisições sem certificado de cliente.
+
+Esse caminho está implementado em `src/services/sefin_nacional.py`: um cliente `httpx` com `cert=(cert.pem, key.pem)` que, com um certificado configurado via variáveis de ambiente (`NFSE_CERT_PEM`, `NFSE_KEY_PEM`), baixa o XML real da nota. O conector NFS-e Nacional tenta esse caminho primeiro; sem certificado, registra a tentativa e cai para a evidência da consulta pública. O POC não tem o e-CNPJ da empresa avaliadora, mas o código está pronto para produção — basta apontar o certificado.
+
+### Por que os demais caminhos não servem
+
+A Consulta Pública oficial (`nfse.gov.br/consultapublica/?tpc=1&chave=...`) aceita a chave na query string e renderiza a página da nota específica — usada como evidência via Playwright, bem melhor que a home de login. A consulta final dos dados, porém, é protegida por **hCaptcha** (sitekey `e02c27a0-...`, botão `btnSubmitHCaptcha`); um POST sem o token retorna apenas o formulário vazio — verificado. Endpoints diretos de DANFSe (`/Visualizar`, `/Danfse`) retornam HTTP 500/404 por exigirem sessão autenticada. Ou seja: ou hCaptcha, ou certificado ICP-Brasil. O caminho profissional é o certificado.
 
 ## Verificação de URLs antes de implementar
 
@@ -138,7 +144,7 @@ Complementa o SQLite (que persiste cache entre execuções) e o relatório HTML 
 
 O workflow `.github/workflows/ci.yml` roda `pytest tests/ -v` em todo push e pull request. Configuração: Ubuntu latest, Python 3.11, cache de pip.
 
-Os testes (30 casos cobrindo normalização de CNPJ, decode de chave NFS-e Nacional e NF-e com validação de DV, cadeia de fallback de enriquecimento de CNPJ com HTTP mockado via respx, geração de artefatos PDF/JSON, modelos Pydantic e leitura do Excel) não dependem de Playwright nem de portais externos, portanto executam sem configuração adicional no runner. Testes de integração com browser são excluídos do CI por exigirem credenciais e portais reais.
+Os testes (33 casos cobrindo normalização de CNPJ, decode de chave NFS-e Nacional e NF-e com validação de DV, cadeia de fallback de enriquecimento de CNPJ com HTTP mockado via respx, geração de artefatos PDF/JSON, cliente SEFIN Nacional mTLS com e sem certificado, modelos Pydantic e leitura do Excel) não dependem de Playwright nem de portais externos, portanto executam sem configuração adicional no runner. Testes de integração com browser são excluídos do CI por exigirem credenciais e portais reais.
 
 ## Limitações conhecidas e como foram contornadas
 

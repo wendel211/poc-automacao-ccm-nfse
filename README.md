@@ -32,6 +32,19 @@ Para cada linha da planilha:
 | Porto Alegre | NFS-e Nacional | Decode da chave + enriquecimento CNPJ | DNS failure |
 | Nova Lima | NFS-e Nacional | Decode da chave + enriquecimento CNPJ | Portal migrado em Jan/2026 |
 
+### Busca oficial na NFS-e Federal (API SEFIN Nacional + mTLS)
+
+O canal **sancionado** para baixar a NFS-e Nacional por chave é a API SEFIN/ADN Nacional, que exige **certificado digital ICP-Brasil** (e-CNPJ A1) via mTLS — o endpoint responde `496 SSL certificate required` sem ele. Esse cliente está implementado em [`src/services/sefin_nacional.py`](src/services/sefin_nacional.py): com um certificado configurado, o pipeline baixa o XML real da nota; sem ele, registra a tentativa e cai para a evidência da consulta pública.
+
+```bash
+# Converter e-CNPJ A1 (.pfx) para PEM e apontar para o pipeline:
+openssl pkcs12 -in ecnpj.pfx -clcerts -nokeys -out cert.pem
+openssl pkcs12 -in ecnpj.pfx -nocerts -nodes  -out key.pem
+export NFSE_CERT_PEM=cert.pem NFSE_KEY_PEM=key.pem
+```
+
+> Os portais públicos (consulta pública com hCaptcha, Emissor Nacional com login gov.br) não permitem fetch programático — verificado empiricamente. A API com certificado é o único caminho oficial, e está pronto para produção.
+
 ---
 
 ## Resultado da execução real
@@ -128,6 +141,7 @@ Pipeline (rich live table)
     ├── Pydantic        — valida e normaliza cada linha
     ├── fiscal_keys     — decodifica chave NFS-e Nacional (50d) / NF-e (44d) + valida DV
     ├── cnpj_lookup     — enriquece cadastro via API pública (fallback chain)
+    ├── sefin_nacional  — baixa XML da NFS-e via API SEFIN (mTLS ICP-Brasil)
     ├── document_builder — gera comprovante PDF + JSON da nota (artefatos baixáveis)
     ├── SQLite          — cache de CCM por municipio::cnpj
     │
@@ -157,7 +171,7 @@ output/
 python -m pytest tests/ -v
 ```
 
-30 testes cobrindo: normalização CNPJ, **decode de chave NFS-e Nacional e NF-e com validação de DV (módulo 11)**, **cadeia de fallback de enriquecimento de CNPJ (HTTP mockado com respx)**, **geração de artefatos (PDF de cadastro e JSON da nota)**, validação de modelos Pydantic, leitura do xlsx (25 linhas, 5 municípios, unicidade de cache key).
+33 testes cobrindo: normalização CNPJ, **decode de chave NFS-e Nacional e NF-e com validação de DV (módulo 11)**, **cadeia de fallback de enriquecimento de CNPJ (HTTP mockado com respx)**, **geração de artefatos (PDF de cadastro e JSON da nota)**, **cliente SEFIN Nacional mTLS (com e sem certificado)**, validação de modelos Pydantic, leitura do xlsx (25 linhas, 5 municípios, unicidade de cache key).
 
 ---
 
