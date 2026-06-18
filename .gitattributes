@@ -1,6 +1,7 @@
 # Artefatos binários — nunca aplicar conversão de fim de linha
 *.pdf binary
 *.png binary
+*.gif binary
 *.xlsx binary
 
 # Estatísticas de linguagem do GitHub — marcar saídas geradas

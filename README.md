@@ -2,7 +2,7 @@
 
 Automação fiscal que lê uma planilha de entrada, consulta o **CCM (Inscrição Municipal)** de cada empresa e faz o download dos documentos fiscais (cadastro municipal + nota fiscal) nos portais de 5 municípios brasileiros.
 
-![Demo do pipeline](demo.gif)
+![Demo do pipeline](gifpoc.gif)
 
 ---
 
