@@ -78,9 +78,12 @@ class RowResult(BaseModel):
     chave_dv_valido: Optional[str] = None
     # Arquivos e metadados de execução
     arquivo_cadastro: Optional[str] = None
+    arquivo_cadastro_publico: Optional[str] = None
     arquivo_dados_nota: Optional[str] = None
     arquivo_nota_pdf: Optional[str] = None
     arquivo_nota_xml: Optional[str] = None
+    arquivo_evidencia_cadastro: Optional[str] = None
+    arquivo_evidencia_nota: Optional[str] = None
     arquivo_evidencia: Optional[str] = None
     municipio_estrategia: Optional[str] = None
     data_execucao: Optional[str] = None

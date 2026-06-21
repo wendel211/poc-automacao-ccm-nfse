@@ -1,29 +1,17 @@
-"""
-Conector Belo Horizonte — Portal NFS-e BH (servicos.pbh.gov.br).
-URL verificada: https://servicos.pbh.gov.br/nfse/autenticidade (HTTP 200).
-URL antiga bhiss.pbh.gov.br não resolve DNS.
-
-Estratégia:
-  - Chave longa (40+ dígitos): NfseNacionalConnector.
-  - Código curto (ex: 1f3be52b, YVSC-ARGB): Playwright via portal BH.
-  - CCM: portal BH usa Sydle SPA (Web Components), não renderiza form
-    em headless sem tempo de espera elevado — captura screenshot como evidência.
-"""
+"""Belo Horizonte connector using public FIC and BH NFS-e portals."""
 from __future__ import annotations
+
 from pathlib import Path
 
-import httpx
 from loguru import logger
-from tenacity import retry, stop_after_attempt, wait_exponential
 
 from src.connectors.base import MunicipalConnector
 from src.connectors.nfse_nacional import NfseNacionalConnector
 from src.models import CcmResult, DownloadResult, InputRow
+from src.services.bh_fic import consultar_fic_bh
+from src.services.nfse_municipal import PORTAL_BH, baixar_nota
 from src.utils.cnpj import is_nfse_nacional_key
-
-_BH_AUTENTICIDADE = "https://servicos.pbh.gov.br/nfse/autenticidade"
-_TIMEOUT = httpx.Timeout(30.0)
-_HEADERS = {"User-Agent": "Mozilla/5.0 (compatible; poc-automacao-ccm-nfse/0.1)"}
+from src.utils.fiscal_keys import TipoChave, decode
 
 _nfse_nacional = NfseNacionalConnector("BELO HORIZONTE")
 
@@ -35,32 +23,63 @@ class BeloHorizonteConnector(MunicipalConnector):
 
     @property
     def estrategia(self) -> str:
-        return "BHISS Digital (Playwright) + NFS-e Nacional fallback"
+        return "BH FIC publica + BHISS/NFS-e com captcha"
 
-    @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=10))
     def lookup_ccm(self, row: InputRow) -> CcmResult:
-        logger.info("BH: consultando CCM para CNPJ {}", row.cnpj)
-        try:
-            with httpx.Client(timeout=_TIMEOUT, headers=_HEADERS, follow_redirects=True) as client:
-                resp = client.get(_BH_AUTENTICIDADE)
-            if resp.status_code in (200, 302):
-                return CcmResult(
-                    found=False,
-                    error="Portal BH (servicos.pbh.gov.br) requer sessão para consulta de CCM",
-                )
-            return CcmResult(found=False, error=f"HTTP {resp.status_code}")
-        except httpx.TimeoutException:
-            return CcmResult(found=False, error="Timeout ao acessar BHISS Digital")
-        except Exception as exc:
-            return CcmResult(found=False, error=str(exc))
+        logger.info("BH: consultando FIC publica para CNPJ {}", row.cnpj)
+        fic = consultar_fic_bh(row.cnpj)
+        return CcmResult(found=fic.success, ccm=fic.ccm, error=fic.error)
 
     def download_company_registration(self, row: InputRow, dest_dir: Path) -> DownloadResult:
-        from src.browser.playwright_runner import capture_bh_company
-        return capture_bh_company(row, dest_dir)
+        cached_fic = dest_dir / f"cadastro_municipal_bh_fic_{row.cnpj}.pdf"
+        if cached_fic.exists() and cached_fic.stat().st_size > 1000:
+            logger.info("BH: reutilizando FIC ja baixada para CNPJ {}", row.cnpj)
+            return DownloadResult(success=True, file_path=str(cached_fic))
+
+        logger.info("BH: baixando FIC publica para CNPJ {}", row.cnpj)
+        fic = consultar_fic_bh(row.cnpj, dest_dir)
+        return DownloadResult(success=fic.success, file_path=fic.file_path, error=fic.error)
 
     def download_invoice(self, row: InputRow, dest_dir: Path) -> DownloadResult:
         if is_nfse_nacional_key(row.cod_verificacao):
             logger.info("BH: chave NFS-e Nacional detectada para {}", row.id_documento)
             return _nfse_nacional.download_invoice(row, dest_dir)
-        from src.browser.playwright_runner import capture_bh_invoice
-        return capture_bh_invoice(row, dest_dir)
+
+        chave = decode(row.cod_verificacao)
+        if chave.tipo != TipoChave.MUNICIPAL_CURTO:
+            return DownloadResult(
+                success=False,
+                error=f"Chave {chave.tipo.value} nao e NFS-e municipal de Belo Horizonte",
+            )
+
+        numeros = _numeros_nfse_bh(row.referencia)
+        if not numeros:
+            return DownloadResult(success=False, error="Referencia da NFS-e BH ausente/invalida")
+
+        erros = []
+        for numero in numeros:
+            nota = baixar_nota(
+                PORTAL_BH,
+                row.cnpj,
+                numero,
+                row.cod_verificacao.strip(),
+                dest_dir,
+                f"nota_bh_{row.id_documento}_{numero.replace('/', '_')}",
+                tem_captcha=True,
+            )
+            if nota.success:
+                return DownloadResult(success=True, file_path=nota.file_path)
+            if nota.error:
+                erros.append(f"{numero}: {nota.error}")
+
+        return DownloadResult(success=False, error="; ".join(erros[-4:]) or "NFS-e BH nao encontrada")
+
+
+def _numeros_nfse_bh(referencia: str | None) -> list[str]:
+    digits = "".join(ch for ch in str(referencia or "") if ch.isdigit())
+    if not digits:
+        return []
+    if "/" in str(referencia or ""):
+        return [str(referencia).strip()]
+    numero = int(digits)
+    return [f"{ano}/{numero}" for ano in range(2026, 2022, -1)]

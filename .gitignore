@@ -13,10 +13,10 @@ build/
 playwright-report/
 test-results/
 
-# Output — ignora arquivos temporarios mas versiona resultados e evidencias
-output/*.db
-output/*.db-shm
-output/*.db-wal
+# Saidas de execucao/teste (a entrega curada fica em entrega_final/)
+output/
+output_teste/
+output_*/
 
 # SQLite
 *.db

@@ -19,7 +19,11 @@ from loguru import logger
 from tenacity import retry, stop_after_attempt, wait_exponential
 
 from src.connectors.base import MunicipalConnector
+from src.connectors.nfse_nacional import NfseNacionalConnector
 from src.models import CcmResult, DownloadResult, InputRow
+from src.utils.cnpj import is_nfse_nacional_key
+
+_nfse_nacional = NfseNacionalConnector("BARUERI")
 
 _ISSNET_AUTENTICIDADE = (
     "https://www.issnetonline.com.br/webissnetonline/velo/autenticidade.jsf?id=12"
@@ -52,5 +56,9 @@ class BarueriConnector(MunicipalConnector):
         return capture_barueri_company(row, dest_dir)
 
     def download_invoice(self, row: InputRow, dest_dir: Path) -> DownloadResult:
+        if is_nfse_nacional_key(row.cod_verificacao):
+            logger.info("Barueri: chave NFS-e Nacional detectada para {}", row.id_documento)
+            return _nfse_nacional.download_invoice(row, dest_dir)
+
         from src.browser.playwright_runner import capture_barueri_invoice
         return capture_barueri_invoice(row, dest_dir)

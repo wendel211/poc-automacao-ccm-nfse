@@ -13,7 +13,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY pyproject.toml ./
 COPY src/ ./src/
 RUN pip install -e ".[dev]" 2>/dev/null || pip install \
-    pandas openpyxl pydantic httpx tenacity loguru typer playwright rich reportlab respx
+    pandas openpyxl pydantic httpx tenacity loguru typer playwright rich respx
 
 RUN python -m playwright install chromium --with-deps
 
@@ -23,5 +23,4 @@ RUN mkdir -p output/evidencias
 
 VOLUME ["/app/output"]
 
-ENTRYPOINT ["python", "-c", \
-    "from src.pipeline import run; from pathlib import Path; run(Path('input/janabril2026_amostra_5x5.xlsx'))"]
+ENTRYPOINT ["python", "-m", "src.main", "input/janabril2026_amostra_5x5.xlsx", "--output-dir", "output"]
