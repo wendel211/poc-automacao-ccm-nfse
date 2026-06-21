@@ -26,12 +26,10 @@ depende da disponibilidade dos portais públicos e de uma chave válida da 2Capt
 
 ## Validação com chave real da 2Captcha
 
-A pipeline foi executada de ponta a ponta com uma chave real da 2Captcha. Confirmou-se que, com a
+A pipeline foi executada de ponta a ponta com uma chave real da 2Captcha e confirmou-se que, com a
 chave, o **hCaptcha da NFS-e Nacional é resolvido** e as **DANFSe são baixadas de verdade** — por
 exemplo, os casos `2652712`/`2665465` (DANFSe 24) e `2632698` (DANFSe 10) baixaram a nota real e
-ficaram `SUCESSO`. Sem a chave, esses mesmos passos registram o erro técnico
-"hCaptcha não resolvido" e não marcam sucesso (a pipeline falha rápido, não trava). Ou seja, o
-resultado `11 SUCESSO` é reprodutível com chave válida e portais no ar.
+ficaram `SUCESSO`. O resultado `11 SUCESSO` é reproduzível com a chave válida e os portais no ar.
 
 ## Portais por município
 

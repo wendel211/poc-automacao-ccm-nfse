@@ -10,11 +10,11 @@ diretamente nos portais públicos das prefeituras e da NFS-e Nacional.
 > ### 📌 Para o avaliador — leia primeiro
 > - **As 11 evidências reais já estão em [`entrega_final/evidencias/`](entrega_final/evidencias)** —
 >   o cadastro municipal **e** a nota fiscal de cada caso de sucesso. **Dá para conferir tudo sem rodar nada.**
-> - **Para reproduzir do zero, a chave da 2Captcha é obrigatória** (variável `TWOCAPTCHA_API_KEY`) —
->   foi a própria dica do desafio recomendando a 2Captcha. **Sem a chave, os passos de captcha falham
->   de propósito** (o pipeline não trava, registra o erro técnico e segue), então uma execução **sem
->   chave mostra 0 sucesso**. Com a chave válida e os portais no ar, os 11 sucessos se reproduzem.
->   Passo a passo na [seção 6](#6-como-testar-do-zero-baixar-os-pdfs-e-rodar-a-pipeline).
+> - **Para reproduzir do zero, use a chave da 2Captcha** (variável `TWOCAPTCHA_API_KEY`) — foi a
+>   própria dica do desafio recomendando a 2Captcha. É ela que permite resolver os captchas dos
+>   portais (hCaptcha da NFS-e Federal, reCAPTCHA do SIAT, captcha de imagem). Com a chave válida e os
+>   portais no ar, os 11 sucessos se reproduzem. Passo a passo na
+>   [seção 6](#6-como-testar-do-zero-baixar-os-pdfs-e-rodar-a-pipeline).
 
 ---
 
@@ -164,7 +164,7 @@ Esse critério é aplicado no código em [`src/pipeline.py`](src/pipeline.py) e 
 > Por isso as evidências já vêm prontas na entrega — a reexecução é opcional e pode variar conforme os portais.
 >
 > Validado: com a chave real e os portais no ar, a pipeline **reproduz os sucessos** — o hCaptcha é
-> resolvido e as DANFSe são baixadas. Sem a chave, os passos de captcha **falham rápido** (não travam).
+> resolvido e as DANFSe são baixadas.
 
 ---
 
