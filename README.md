@@ -156,7 +156,7 @@ Esse critério é aplicado no código em [`src/pipeline.py`](src/pipeline.py) e 
   documento sem precisar reexecutar nada**.
 - A planilha e o relatório finais estão em [`entrega_final/resultados/`](entrega_final/resultados);
   todos os caminhos de arquivo na planilha apontam para `entrega_final/` e foram auditados
-  (0 caminhos quebrados, sem `nan`).
+  (0 caminhos quebrados e sem valores vazios indevidos).
 - A documentação técnica detalhada está em [`entrega_final/docs/`](entrega_final/docs).
 
 > ⚠️ **A reexecução do zero depende de fatores externos**: disponibilidade dos **portais públicos**

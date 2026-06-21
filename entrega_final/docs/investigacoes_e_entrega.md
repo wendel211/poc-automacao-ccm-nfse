@@ -21,7 +21,7 @@ depende da disponibilidade dos portais públicos e de uma chave válida da 2Capt
 - **SUCESSO: 11.**
 - **PARCIAL: 5.**
 - **ERRO: 9.**
-- Caminhos auditados na planilha final: 0 links quebrados, sem `nan`.
+- Caminhos auditados na planilha final: 0 links quebrados e sem valores vazios indevidos.
 - Testes automatizados: 48 passed.
 
 ## Validação com chave real da 2Captcha

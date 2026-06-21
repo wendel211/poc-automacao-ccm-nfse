@@ -197,7 +197,7 @@ toa — útil para retomar uma execução interrompida (basta rodar de novo que 
 - Foi removido o código legado que gerava PDF local a partir de cadastro federal e JSON de chave
   fiscal, pois isso não satisfaz o critério real de sucesso.
 - O pipeline mantém somente documentos oficiais baixados, ou o print oficial de página de cadastro
-  quando o enunciado permite. A planilha final foi auditada (0 caminhos quebrados, sem `nan`).
+  quando o enunciado permite. A planilha final foi auditada (0 caminhos quebrados e sem valores vazios indevidos).
 
 ## Limitações conhecidas (barreiras reais dos portais)
 
