@@ -152,6 +152,9 @@ Esse critério é aplicado no código em [`src/pipeline.py`](src/pipeline.py) e 
 > ⚠️ **A reexecução do zero depende de fatores externos**: disponibilidade dos **portais públicos**
 > no momento da consulta e de uma **chave válida da 2Captcha** fornecida via variável de ambiente.
 > Por isso as evidências já vêm prontas na entrega — a reexecução é opcional e pode variar conforme os portais.
+>
+> Validado: com a chave real e os portais no ar, a pipeline **reproduz os sucessos** — o hCaptcha é
+> resolvido e as DANFSe são baixadas. Sem a chave, os passos de captcha **falham rápido** (não travam).
 
 ---
 
