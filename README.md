@@ -7,6 +7,15 @@ diretamente nos portais públicos das prefeituras e da NFS-e Nacional.
 > **Resultado real da amostra (25 linhas):** **11 SUCESSO · 5 PARCIAL · 9 ERRO**
 > Evidências reais já incluídas em [`entrega_final/evidencias/`](entrega_final/evidencias). Testes: **48 passed**.
 
+> ### 📌 Para o avaliador — leia primeiro
+> - **As 11 evidências reais já estão em [`entrega_final/evidencias/`](entrega_final/evidencias)** —
+>   o cadastro municipal **e** a nota fiscal de cada caso de sucesso. **Dá para conferir tudo sem rodar nada.**
+> - **Para reproduzir do zero, a chave da 2Captcha é obrigatória** (variável `TWOCAPTCHA_API_KEY`) —
+>   foi a própria dica do desafio recomendando a 2Captcha. **Sem a chave, os passos de captcha falham
+>   de propósito** (o pipeline não trava, registra o erro técnico e segue), então uma execução **sem
+>   chave mostra 0 sucesso**. Com a chave válida e os portais no ar, os 11 sucessos se reproduzem.
+>   Passo a passo na [seção 6](#6-como-testar-do-zero-baixar-os-pdfs-e-rodar-a-pipeline).
+
 ---
 
 ## Arquitetura (visão geral)
@@ -141,9 +150,10 @@ Esse critério é aplicado no código em [`src/pipeline.py`](src/pipeline.py) e 
 ```
 
 ### Sobre os arquivos da entrega
-- **As evidências reais já estão em [`entrega_final/evidencias/`](entrega_final/evidencias)** — são os
-  PDFs oficiais de cadastro municipal e de notas fiscais que o pipeline baixou. O avaliador pode
-  **abrir e conferir cada documento sem precisar reexecutar nada**.
+- **As evidências reais já estão em [`entrega_final/evidencias/`](entrega_final/evidencias)** — são
+  documentos oficiais do município: cadastro municipal em **PDF/XML ou print (screenshot) da página
+  oficial de cadastro**, e a nota fiscal em **PDF/XML**. O avaliador pode **abrir e conferir cada
+  documento sem precisar reexecutar nada**.
 - A planilha e o relatório finais estão em [`entrega_final/resultados/`](entrega_final/resultados);
   todos os caminhos de arquivo na planilha apontam para `entrega_final/` e foram auditados
   (0 caminhos quebrados, sem `nan`).
@@ -163,7 +173,8 @@ Esse critério é aplicado no código em [`src/pipeline.py`](src/pipeline.py) e 
 1. Abra [`entrega_final/resultados/resultado_final_entrega_20260620.xlsx`](entrega_final/resultados) —
    coluna `STATUS_EXECUCAO` (11 SUCESSO / 5 PARCIAL / 9 ERRO) e as colunas `ARQUIVO_*`.
 2. Abra o relatório [`entrega_final/resultados/relatorio_final_entrega_20260620.html`](entrega_final/resultados).
-3. Navegue por [`entrega_final/evidencias/`](entrega_final/evidencias) e abra os PDFs reais.
+3. Navegue por [`entrega_final/evidencias/`](entrega_final/evidencias) e abra os documentos reais
+   (PDF/XML das notas e dos cadastros, e o print da página oficial de cadastro quando for o caso).
 4. Leia [`entrega_final/docs/`](entrega_final/docs) para o racional caso a caso.
 
 ---

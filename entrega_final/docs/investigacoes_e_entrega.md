@@ -157,6 +157,12 @@ inscrição em BH para esses CNPJs.
 
 ## Conclusão
 
-A entrega final mantém **somente evidências oficiais reais**, planilha auditada e explicação caso a
-caso. Os casos sem fonte oficial pública suficiente permanecem `PARCIAL` ou `ERRO`, sem mascarar.
+A entrega final mantém **somente evidências oficiais reais**. Conforme o enunciado, são aceitos:
+
+- **cadastro municipal**: PDF, XML **ou print/screenshot da página oficial de cadastro** (ex.: o print
+  da Consulta de Prestadores do e-NFS Nova Lima);
+- **nota fiscal**: PDF **ou XML**.
+
+Não entram cadastro federal de apoio, JSON de chave, PDF gerado localmente nem documento de outro
+município. Os casos sem fonte oficial pública suficiente permanecem `PARCIAL` ou `ERRO`, sem mascarar.
 O número honesto de sucessos é **11**.
