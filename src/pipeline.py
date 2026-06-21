@@ -21,10 +21,6 @@ from src.database import Database
 from src.excel_handler import read_rows, write_results
 from src.models import InputRow, Municipio, RowResult, StatusExecucao
 from src.services.cnpj_lookup import CompanyData, fetch_company_data
-from src.services.document_builder import (
-    build_company_registration_pdf,
-    build_note_data_file,
-)
 from src.utils.cnpj import normalize as normalize_cnpj
 from src.utils.fiscal_keys import TipoChave, decode as decode_chave
 from src.utils.filesystem import ensure_dirs
@@ -51,9 +47,32 @@ _STATUS_ICON = {
     StatusExecucao.INDISPONIVEL: "[-]",
 }
 
+_CADASTRO_EXTS = {".pdf", ".xml", ".png", ".jpg", ".jpeg"}
+_NOTA_EXTS = {".pdf", ".xml"}
+
 import io, sys as _sys
 _stdout_utf8 = io.TextIOWrapper(_sys.stdout.buffer, encoding="utf-8", errors="replace")
 console = Console(file=_stdout_utf8, highlight=False)
+
+
+def _has_file(path: str | None, allowed_exts: set[str]) -> bool:
+    if not path:
+        return False
+    p = Path(path)
+    return p.suffix.lower() in allowed_exts and p.exists()
+
+
+def _classify_status(
+    *,
+    ccm_value: str | None,
+    cadastro_municipal_ok: bool,
+    nota_download_ok: bool,
+) -> StatusExecucao:
+    if ccm_value and cadastro_municipal_ok and nota_download_ok:
+        return StatusExecucao.SUCESSO
+    if ccm_value or cadastro_municipal_ok or nota_download_ok:
+        return StatusExecucao.PARCIAL
+    return StatusExecucao.ERRO
 
 
 def _build_table(rows: list[InputRow], results: dict[str, RowResult], current_id: str | None) -> Table:
@@ -76,7 +95,14 @@ def _build_table(rows: list[InputRow], results: dict[str, RowResult], current_id
             status = result.status
             style = _STATUS_STYLE[status]
             icon = _STATUS_ICON[status]
-            evidencia = "sim" if (result.arquivo_cadastro or result.arquivo_evidencia or result.arquivo_nota_pdf) else "nao"
+            evidencia = "sim" if (
+                result.arquivo_cadastro
+                or result.arquivo_nota_pdf
+                or result.arquivo_nota_xml
+                or result.arquivo_evidencia_cadastro
+                or result.arquivo_evidencia_nota
+                or result.arquivo_evidencia
+            ) else "nao"
             msg = (result.mensagem_tecnica or "")[:60]
             status_text = Text(f"{icon} {status.value}", style=style)
         elif row.id_documento == current_id:
@@ -141,36 +167,43 @@ def _process_row(
     reg_result = connector.download_company_registration(row, company_dir)
     inv_result = connector.download_invoice(row, notes_dir)
 
-    # --- 5. Materializa artefatos baixáveis a partir dos dados obtidos --------
-    cadastro_pdf = None
-    if company.found:
-        cadastro_pdf = str(build_company_registration_pdf(company, company_dir))
-    nota_json = None
+    # --- 5. Dados de apoio (sem gravar arquivos auxiliares) ------------------
+    # O comprovante público (Receita) em PDF e o JSON da chave eram apenas apoio
+    # e poluíam o output; o dado de apoio segue nas colunas da planilha/relatório,
+    # mas não geramos mais arquivos. Mantém-se só cadastro municipal real + nota real.
     chave_decodificada = chave.tipo != TipoChave.MUNICIPAL_CURTO
-    if chave_decodificada:
-        nota_json = str(build_note_data_file(chave, notes_dir, cnpj_confere))
 
-    # --- 6. Status baseado nos DADOS REAIS obtidos ----------------------------
-    obteve_cadastro = company.found
-    obteve_documento = chave_decodificada or inv_result.success
-
+    # --- 6. Status baseado no criterio do avaliador --------------------------
+    cadastro_municipal_ok = reg_result.success and _has_file(reg_result.file_path, _CADASTRO_EXTS)
+    nota_download_ok = inv_result.success and _has_file(inv_result.file_path, _NOTA_EXTS)
     notas = []
-    if obteve_cadastro:
-        notas.append(f"cadastro via {company.fonte}")
+    if cadastro_municipal_ok:
+        notas.append("cadastro municipal baixado")
+    else:
+        notas.append("cadastro municipal/CCM nao baixado")
+    if ccm_value:
+        notas.append(f"CCM encontrado: {ccm_value}")
+    else:
+        notas.append("CCM/Inscricao Municipal nao encontrado")
+    if nota_download_ok:
+        notas.append("nota fiscal PDF/XML baixada")
+    else:
+        notas.append("nota fiscal PDF/XML nao baixada")
+    if company.found:
+        notas.append(f"apoio: cadastro publico via {company.fonte}")
     if chave_decodificada:
-        notas.append(chave.descricao)
+        notas.append(f"apoio: {chave.descricao}")
     if cnpj_confere == "DIVERGE":
         notas.append("CNPJ emitente da chave diverge do fornecedor")
     portal_msg = "; ".join(filter(None, [reg_result.error, inv_result.error]))
 
-    if obteve_cadastro and obteve_documento:
-        status = StatusExecucao.SUCESSO
-    elif obteve_cadastro or obteve_documento:
-        status = StatusExecucao.PARCIAL
-    else:
-        status = StatusExecucao.ERRO
+    status = _classify_status(
+        ccm_value=ccm_value,
+        cadastro_municipal_ok=cadastro_municipal_ok,
+        nota_download_ok=nota_download_ok,
+    )
 
-    msg = "; ".join(filter(None, notas + ([portal_msg] if status != StatusExecucao.SUCESSO else [])))
+    msg = "; ".join(filter(None, notas + ([portal_msg] if portal_msg else [])))
     if not msg:
         msg = portal_msg or None
 
@@ -191,6 +224,7 @@ def _process_row(
     )
 
     inv_path = inv_result.file_path
+    reg_path = reg_result.file_path
     return RowResult(
         id_documento=row.id_documento,
         status=status,
@@ -208,11 +242,20 @@ def _process_row(
         chave_dv_valido=(
             None if chave.dv_valido is None else ("valido" if chave.dv_valido else "invalido")
         ),
-        arquivo_cadastro=cadastro_pdf or reg_result.file_path,
-        arquivo_dados_nota=nota_json,
-        arquivo_nota_pdf=inv_path if inv_path and inv_path.endswith(".pdf") else None,
-        arquivo_nota_xml=inv_path if inv_path and inv_path.endswith(".xml") else None,
-        arquivo_evidencia=inv_path if inv_path and inv_path.endswith(".png") else None,
+        arquivo_cadastro=reg_path if cadastro_municipal_ok else None,
+        arquivo_cadastro_publico=None,
+        arquivo_dados_nota=None,
+        arquivo_nota_pdf=inv_path if nota_download_ok and inv_path and inv_path.endswith(".pdf") else None,
+        arquivo_nota_xml=inv_path if nota_download_ok and inv_path and inv_path.endswith(".xml") else None,
+        arquivo_evidencia_cadastro=(
+            reg_path if reg_path and Path(reg_path).suffix.lower() in {".png", ".jpg", ".jpeg", ".txt"} else None
+        ),
+        arquivo_evidencia_nota=(
+            inv_path if inv_path and Path(inv_path).suffix.lower() in {".png", ".jpg", ".jpeg", ".txt"} else None
+        ),
+        arquivo_evidencia=(
+            inv_path if inv_path and Path(inv_path).suffix.lower() in {".png", ".jpg", ".jpeg", ".txt"} else None
+        ),
         municipio_estrategia=connector.estrategia,
         data_execucao=now,
     )
@@ -238,10 +281,12 @@ def _write_jsonl_line(log_file: Path, result: RowResult, row: "InputRow") -> Non
         "cnpj_emitente_confere": result.cnpj_emitente_confere,
         "chave_dv_valido": result.chave_dv_valido,
         "arquivo_cadastro": result.arquivo_cadastro,
+        "arquivo_cadastro_publico": result.arquivo_cadastro_publico,
         "arquivo_dados_nota": result.arquivo_dados_nota,
         "arquivo_nota_pdf": result.arquivo_nota_pdf,
         "arquivo_nota_xml": result.arquivo_nota_xml,
-        "arquivo_evidencia": result.arquivo_evidencia,
+        "arquivo_evidencia_cadastro": result.arquivo_evidencia_cadastro,
+        "arquivo_evidencia_nota": result.arquivo_evidencia_nota,
         "municipio_estrategia": result.municipio_estrategia,
     }
     with log_file.open("a", encoding="utf-8") as f:

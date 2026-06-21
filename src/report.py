@@ -35,8 +35,8 @@ def _row_html(row_result: RowResult, index: int) -> str:
     r = row_result
     color = _STATUS_COLOR.get(r.status, "#fff")
     icon = _STATUS_ICON.get(r.status, "")
-    cadastro_img = _embed_image(r.arquivo_cadastro)
-    nota_img = _embed_image(r.arquivo_evidencia or r.arquivo_nota_pdf)
+    cadastro_img = _embed_image(r.arquivo_evidencia_cadastro)
+    nota_img = _embed_image(r.arquivo_evidencia_nota or r.arquivo_evidencia)
     msg = (r.mensagem_tecnica or "—").replace("—", " - ")
     return f"""
     <tr style="background:{color}">
@@ -120,7 +120,7 @@ def generate(
       <thead>
         <tr>
           <th>#</th><th>ID Documento</th><th>Status</th><th>CCM</th>
-          <th>Mensagem</th><th>Screenshot Cadastro</th><th>Screenshot Nota</th>
+          <th>Mensagem</th><th>Evidencia Cadastro</th><th>Evidencia Nota</th>
         </tr>
       </thead>
       <tbody>

@@ -15,6 +15,6 @@ def format_masked(cnpj: str) -> str:
 
 
 def is_nfse_nacional_key(cod: str) -> bool:
-    """Chave NFS-e Nacional: ~50 dígitos numéricos (padrão SPED fiscal)."""
+    """Chave NFS-e Nacional: 50 digitos numericos."""
     digits = re.sub(r"\s", "", cod or "")
-    return bool(re.fullmatch(r"\d{40,}", digits))
+    return bool(re.fullmatch(r"\d{50}", digits))

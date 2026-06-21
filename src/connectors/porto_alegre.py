@@ -1,15 +1,6 @@
-"""
-Conector Porto Alegre — NFS-e Nacional (portal municipal fora do ar).
-Portais testados com DNS failure: nfse.portoalegre.rs.gov.br,
-  portalnfse.portoalegre.rs.gov.br, nfse.pmpa.com.br.
-
-Estrategia:
-  - Chave longa (40+ digitos): NFS-e Nacional (captura screenshot).
-  - Codigo curto (ex: b46a80ef): portal municipal indisponivel — registra como
-    INDISPONIVEL; documento nao pode ser obtido sem acesso ao sistema legado.
-  - CCM: portal municipal offline — CCM nao disponivel publicamente.
-"""
+"""Porto Alegre connector: SIAT ISSQN registration + NFS-e Nacional."""
 from __future__ import annotations
+
 from pathlib import Path
 
 from loguru import logger
@@ -17,7 +8,10 @@ from loguru import logger
 from src.connectors.base import MunicipalConnector
 from src.connectors.nfse_nacional import NfseNacionalConnector
 from src.models import CcmResult, DownloadResult, InputRow
+from src.services.nfse_municipal import PORTAL_POA, baixar_nota
+from src.services.poa_siat import consultar_comprovante_issqn_poa
 from src.utils.cnpj import is_nfse_nacional_key
+from src.utils.fiscal_keys import TipoChave, decode
 
 _nfse_nacional = NfseNacionalConnector("PORTO ALEGRE")
 
@@ -29,25 +23,52 @@ class PortoAlegreConnector(MunicipalConnector):
 
     @property
     def estrategia(self) -> str:
-        return "NFS-e Nacional (chave longa) | portal municipal POA offline (codigo curto = INDISPONIVEL)"
+        return "SIAT ISSQN Porto Alegre + NFS-e Nacional (chave longa)"
 
     def lookup_ccm(self, row: InputRow) -> CcmResult:
-        logger.info("POA: portal municipal com falha DNS — CCM indisponivel para CNPJ {}", row.cnpj)
-        return CcmResult(
-            found=False,
-            error="Portal Porto Alegre com falha DNS — CCM nao disponivel",
-        )
+        logger.info("POA: consultando inscricao ISSQN no SIAT para CNPJ {}", row.cnpj)
+        dest_dir = Path("output") / "evidencias" / "PORTO_ALEGRE" / row.cnpj
+        result = consultar_comprovante_issqn_poa(row.cnpj, dest_dir)
+        return CcmResult(found=result.success, ccm=result.inscricao, error=result.error)
 
     def download_company_registration(self, row: InputRow, dest_dir: Path) -> DownloadResult:
-        from src.browser.playwright_runner import capture_poa_company
-        return capture_poa_company(row, dest_dir)
+        logger.info("POA: baixando comprovante municipal ISSQN via SIAT para CNPJ {}", row.cnpj)
+        result = consultar_comprovante_issqn_poa(row.cnpj, dest_dir)
+        return DownloadResult(success=result.success, file_path=result.file_path, error=result.error)
 
     def download_invoice(self, row: InputRow, dest_dir: Path) -> DownloadResult:
         if is_nfse_nacional_key(row.cod_verificacao):
-            logger.info("POA: chave NFS-e Nacional — delegando para NfseNacionalConnector")
+            logger.info("POA: chave NFS-e Nacional - delegando para NfseNacionalConnector")
             return _nfse_nacional.download_invoice(row, dest_dir)
-        logger.warning("POA: codigo curto {} — portal municipal offline", row.cod_verificacao)
-        return DownloadResult(
-            success=False,
-            error="Portal Porto Alegre com falha DNS — documento indisponivel para codigo curto",
+
+        chave = decode(row.cod_verificacao)
+        if chave.tipo != TipoChave.MUNICIPAL_CURTO:
+            return DownloadResult(
+                success=False,
+                error=f"Chave {chave.tipo.value} nao e NFS-e municipal de Porto Alegre",
+            )
+
+        numero = _format_referencia_poa(row.referencia)
+        if not numero:
+            return DownloadResult(success=False, error="Referencia POA ausente/invalida para codigo curto")
+
+        logger.info("POA: tentando NFS-e municipal {} / {}", numero, row.cod_verificacao)
+        result = baixar_nota(
+            PORTAL_POA,
+            row.cnpj,
+            numero,
+            row.cod_verificacao,
+            dest_dir,
+            f"nfse_{numero.replace('/', '_')}",
+            tem_captcha=False,
         )
+        return DownloadResult(success=result.success, file_path=result.file_path, error=result.error)
+
+
+def _format_referencia_poa(referencia: str | None) -> str | None:
+    digits = "".join(c for c in str(referencia or "") if c.isdigit())
+    if len(digits) >= 5:
+        year = digits[:4]
+        number = str(int(digits[4:]))
+        return f"{year}/{number}"
+    return None

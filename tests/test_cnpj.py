@@ -20,8 +20,8 @@ def test_format_masked():
 
 
 def test_nfse_nacional_key_long():
-    # Chave NFS-e Nacional: 44 dígitos (padrão ABRASF)
-    key = "31062002228203865000174000000000002426013942"
+    # Chave NFS-e Nacional: 50 digitos.
+    key = "31062002228203865000174000000000002426013942565090"
     assert is_nfse_nacional_key(key) is True
 
 
@@ -30,7 +30,7 @@ def test_nfse_nacional_key_short():
     assert is_nfse_nacional_key("1f3be52b") is False
 
 
-def test_nfse_nacional_key_with_spaces():
-    # Chave agrupada com espaços — como aparece na planilha
-    key = "3126 0207 2211 0200 0186 5500 1000 0045 8015 9567"
-    assert is_nfse_nacional_key(key) is True
+def test_nfe_44_digits_is_not_nfse_nacional_even_with_spaces():
+    # Chave NF-e agrupada com espacos, como aparece na planilha.
+    key = "3126 0207 2211 0200 0186 5500 1000 0045 8015 9362 3410"
+    assert is_nfse_nacional_key(key) is False

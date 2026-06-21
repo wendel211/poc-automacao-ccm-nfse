@@ -49,26 +49,35 @@ class NfseNacionalConnector(MunicipalConnector):
     def download_invoice(self, row: InputRow, dest_dir: Path) -> DownloadResult:
         key = _clean_key(row.cod_verificacao)
 
-        # 1) Caminho OFICIAL: API SEFIN Nacional com certificado ICP-Brasil (mTLS).
-        #    Baixa o XML real da NFS-e quando um e-CNPJ está configurado no ambiente.
+        # 1) Caminho REAL e principal: Consulta Pública oficial + hCaptcha (2Captcha).
+        #    Baixa o PDF da DANFSe de verdade. É o caminho mais curto que funciona.
+        from src.services.nfse_nacional_download import baixar_danfse
+        from src.utils.fiscal_keys import decode as _decode
+        numero = None
+        try:
+            ch = _decode(key)
+            numero = str(ch.numero) if ch.numero is not None else None
+        except Exception:
+            pass
+        logger.info("NFS-e Nacional: tentando download real da DANFSe para chave {}...", key[:12])
+        danfse = baixar_danfse(key, dest_dir, numero=numero)
+        if danfse.success:
+            return DownloadResult(success=True, file_path=danfse.file_path)
+        logger.warning("NFS-e Nacional: download DANFSe falhou ({})", danfse.error)
+
+        # 2) Caminho OFICIAL alternativo: API SEFIN Nacional com certificado ICP-Brasil (mTLS).
         from src.services.sefin_nacional import cert_disponivel, fetch_nfse
         if cert_disponivel():
-            logger.info("NFS-e Nacional: baixando XML via SEFIN (mTLS) para chave {}...", key[:10])
+            logger.info("NFS-e Nacional: tentando XML via SEFIN (mTLS) para chave {}...", key[:10])
             sefin = fetch_nfse(key, dest_dir)
             if sefin.success:
                 return DownloadResult(success=True, file_path=sefin.file_path)
-            logger.warning("NFS-e Nacional: SEFIN falhou ({}), caindo para evidência", sefin.error)
 
-        # 2) Sem certificado: captura a consulta pública oficial como evidência.
-        logger.info(
-            "NFS-e Nacional: capturando evidencia via Playwright para chave {}... ({})",
-            key[:10], row.id_documento,
-        )
+        # 3) Sem captcha/cert: captura a consulta pública como evidência (NÃO é sucesso).
         from src.browser.playwright_runner import capture_nfse_nacional
         result = capture_nfse_nacional(row, dest_dir, chave=key)
-        if result.success:
-            return DownloadResult(success=True, file_path=result.file_path)
         return DownloadResult(
             success=False,
-            error=result.error or "Falha ao capturar evidencia NFS-e Nacional",
+            file_path=result.file_path,
+            error=danfse.error or "Falha ao baixar DANFSe NFS-e Nacional",
         )

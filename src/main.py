@@ -23,6 +23,7 @@ def run(
     log_level: str = typer.Option("INFO", "--log-level", "-l"),
 ) -> None:
     """Processa a planilha: consulta CCM, baixa cadastros e notas fiscais."""
+    (output_dir / "logs").mkdir(parents=True, exist_ok=True)
     logger.remove()
     logger.add(
         _safe_echo,

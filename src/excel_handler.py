@@ -38,10 +38,12 @@ _OUTPUT_COLS = [
     "CNPJ_EMITENTE_CONFERE",
     "CHAVE_DV_VALIDO",
     "ARQUIVO_CADASTRO",
+    "ARQUIVO_CADASTRO_PUBLICO",
     "ARQUIVO_DADOS_NOTA",
     "ARQUIVO_NOTA_PDF",
     "ARQUIVO_NOTA_XML",
-    "ARQUIVO_EVIDENCIA",
+    "ARQUIVO_EVIDENCIA_CADASTRO",
+    "ARQUIVO_EVIDENCIA_NOTA",
     "MUNICIPIO_ESTRATEGIA",
     "DATA_EXECUCAO",
 ]
@@ -107,10 +109,12 @@ def write_results(source_path: Path, dest_path: Path, results: dict[str, RowResu
             result.cnpj_emitente_confere or "",
             result.chave_dv_valido or "",
             result.arquivo_cadastro or "",
+            result.arquivo_cadastro_publico or "",
             result.arquivo_dados_nota or "",
             result.arquivo_nota_pdf or "",
             result.arquivo_nota_xml or "",
-            result.arquivo_evidencia or "",
+            result.arquivo_evidencia_cadastro or "",
+            result.arquivo_evidencia_nota or result.arquivo_evidencia or "",
             result.municipio_estrategia or "",
             result.data_execucao or datetime.now().isoformat(timespec="seconds"),
         ]
@@ -122,6 +126,14 @@ def write_results(source_path: Path, dest_path: Path, results: dict[str, RowResu
             cell = ws.cell(row=row_idx, column=col_idx, value=safe_value)
             cell.fill = fill
             cell.alignment = Alignment(wrap_text=False)
+
+        # Requisito do enunciado: "Caso encontrado, gravar valor em CCM".
+        # Preenche a coluna ORIGINAL `CCM` (vinha vazia na planilha de entrada)
+        # com a inscricao municipal encontrada, mantendo tambem CCM_ENCONTRADO.
+        if result.ccm_encontrado and "CCM" in header_row:
+            ccm_idx = header_row.index("CCM") + 1
+            ccm_cell = ws.cell(row=row_idx, column=ccm_idx, value=str(result.ccm_encontrado))
+            ccm_cell.fill = fill
 
     _autosize_output_columns(ws, header_row)
     wb.save(dest_path)

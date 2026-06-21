@@ -20,6 +20,11 @@ from loguru import logger
 
 from src.models import DownloadResult, InputRow
 
+# Evidência visual (screenshot/.txt) é considerada RUÍDO pelo critério atual:
+# o pipeline mantém apenas artefatos REAIS (cadastro municipal e nota PDF/XML).
+# Mantido como flag para reativar evidência sob demanda em depuração.
+_SAVE_EVIDENCE = False
+
 _BH_URL = "https://servicos.pbh.gov.br/nfse/autenticidade"
 _ISSNET_URL = "https://www.issnetonline.com.br/webissnetonline/velo/autenticidade.jsf?id=12"
 _RJ_VERIFICACAO_URL = "https://notacarioca.rio.gov.br/documentos/verificacao.aspx"
@@ -88,7 +93,14 @@ _JS_SHADOW_SUBMIT = """() => {
 }"""
 
 
-def _screenshot(page, dest: Path, name: str) -> Path:
+def _screenshot(page, dest: Path, name: str) -> Path | None:
+    """Captura screenshot apenas quando a evidência visual está habilitada.
+
+    Por padrão (`_SAVE_EVIDENCE = False`) não grava nada: o pipeline mantém só
+    artefatos REAIS (cadastro municipal e nota PDF/XML).
+    """
+    if not _SAVE_EVIDENCE:
+        return None
     out = dest / f"{name}.png"
     page.screenshot(path=str(out), full_page=True)
     return out
@@ -176,7 +188,11 @@ def capture_bh_company(row: InputRow, dest_dir: Path) -> DownloadResult:
             _bh_interact(page, row.cnpj)
             screenshot = _screenshot(page, dest_dir, f"cadastro_{row.cnpj}")
             browser.close()
-        return DownloadResult(success=True, file_path=str(screenshot))
+        return DownloadResult(
+            success=False,
+            file_path=str(screenshot) if screenshot else None,
+            error="Apenas screenshot do portal BH; cadastro municipal/CCM nao foi baixado",
+        )
     except Exception as exc:
         logger.error("BH company capture error: {}", exc)
         return DownloadResult(success=False, error=str(exc))
@@ -202,8 +218,12 @@ def capture_bh_invoice(row: InputRow, dest_dir: Path) -> DownloadResult:
             screenshot = _screenshot(page, dest_dir, f"nota_{cod[:20]}")
             browser.close()
 
-        msg = None if filled else "Shadow DOM renderizado mas nenhum campo encontrado"
-        return DownloadResult(success=True, file_path=str(screenshot), error=msg)
+        msg = (
+            "Apenas screenshot do portal BH; PDF/XML da nota nao foi baixado"
+            if filled
+            else "Shadow DOM renderizado mas nenhum campo encontrado; PDF/XML da nota nao foi baixado"
+        )
+        return DownloadResult(success=False, file_path=str(screenshot) if screenshot else None, error=msg)
     except Exception as exc:
         logger.error("BH invoice capture error: {}", exc)
         return DownloadResult(success=False, error=str(exc))
@@ -236,7 +256,11 @@ def capture_rj_company(row: InputRow, dest_dir: Path) -> DownloadResult:
                 pass
             screenshot = _screenshot(page, dest_dir, f"cadastro_{row.cnpj}")
             browser.close()
-        return DownloadResult(success=True, file_path=str(screenshot))
+        return DownloadResult(
+            success=False,
+            file_path=str(screenshot) if screenshot else None,
+            error="Apenas screenshot do portal Nota Carioca; cadastro municipal/CCM nao foi baixado",
+        )
     except Exception as exc:
         logger.error("RJ company capture error: {}", exc)
         return DownloadResult(success=False, error=str(exc))
@@ -286,7 +310,7 @@ def capture_rj_invoice(row: InputRow, dest_dir: Path) -> DownloadResult:
             "CAPTCHA impede submissão automatizada — "
             "formulário preenchido (CNPJ + nota + código) capturado como evidência"
         )
-        return DownloadResult(success=True, file_path=str(screenshot), error=error_msg)
+        return DownloadResult(success=False, file_path=str(screenshot) if screenshot else None, error=error_msg)
     except Exception as exc:
         logger.error("RJ invoice capture error: {}", exc)
         return DownloadResult(success=False, error=str(exc))
@@ -295,6 +319,103 @@ def capture_rj_invoice(row: InputRow, dest_dir: Path) -> DownloadResult:
 # ---------------------------------------------------------------------------
 # Barueri — ISSNet Online (stealth context para tentativa de bypass Cloudflare)
 # ---------------------------------------------------------------------------
+
+def capture_rj_invoice(row: InputRow, dest_dir: Path) -> DownloadResult:
+    sync_playwright = _try_import_playwright()
+    if not sync_playwright:
+        return DownloadResult(success=False, error="Playwright nao instalado")
+
+    cod = row.cod_verificacao.strip()
+    referencia = (row.referencia or "").strip()
+    if not referencia or not cod:
+        return DownloadResult(success=False, error="Nota Carioca exige numero da DSPREST e codigo de verificacao")
+
+    try:
+        from src.services.captcha_solver import solve
+
+        with sync_playwright() as p:
+            browser = p.chromium.launch(headless=True)
+            page = browser.new_page()
+            logger.info("RJ: acessando Nota Carioca para nota {} (cod {})", row.id_documento, cod)
+            last_error = "Nota Carioca nao retornou a DSPREST"
+
+            for attempt in range(3):
+                resp = page.goto(_RJ_VERIFICACAO_URL, timeout=30000, wait_until="networkidle")
+                if resp and resp.status >= 400:
+                    browser.close()
+                    return DownloadResult(
+                        success=False,
+                        error=f"Nota Carioca retornou HTTP {resp.status} - portal indisponivel",
+                    )
+
+                for selector, value in [
+                    ("input[name='ctl00$cphCabMenu$tbCPFCNPJ']", row.cnpj),
+                    ("input[name='ctl00$cphCabMenu$tbNota']", referencia),
+                    ("input[name='ctl00$cphCabMenu$tbVerificacao']", cod),
+                ]:
+                    page.fill(selector, value, timeout=5000)
+
+                captcha = page.locator("img[src*='CaptchaImage.aspx']").first.screenshot()
+                captcha_text = solve(captcha, only_alnum=True)
+                if not captcha_text:
+                    last_error = "Captcha Nota Carioca nao resolvido"
+                    continue
+
+                page.fill("input[name='ctl00$cphCabMenu$ccCodigo$ccCodigo']", captcha_text, timeout=5000)
+                page.evaluate(
+                    """(value) => {
+                        const hidden = document.querySelector(
+                            "input[name='ctl00$cphCabMenu$ccCodigo$tbCaptchaControl']"
+                        );
+                        if (hidden) hidden.value = value;
+                    }""",
+                    captcha_text,
+                )
+
+                try:
+                    with page.expect_navigation(wait_until="networkidle", timeout=30000):
+                        page.click("input[name='ctl00$cphCabMenu$btVerificar']")
+                except Exception:
+                    page.wait_for_load_state("networkidle", timeout=15000)
+
+                text = " ".join(page.inner_text("body").split())
+                lower = text.lower()
+                for marker in (
+                    "contribuinte nao encontrado",
+                    "contribuinte não encontrado",
+                    "documento nao encontrado",
+                    "documento não encontrado",
+                    "codigo invalido",
+                    "código inválido",
+                    "informe corretamente",
+                ):
+                    marker_pos = lower.find(marker)
+                    if marker_pos >= 0:
+                        start = max(0, marker_pos - 80)
+                        last_error = text[start:marker_pos + 220]
+                        break
+                else:
+                    if (
+                        "verificacao de autenticidade da dsprest" not in lower
+                        and ("prestador de serviços" in lower or "prestador de servicos" in lower)
+                        and ("tomador de serviços" in lower or "tomador de servicos" in lower)
+                    ):
+                        dest_dir.mkdir(parents=True, exist_ok=True)
+                        out = dest_dir / f"nota_carioca_{referencia}.pdf"
+                        page.pdf(path=str(out), format="A4", print_background=True)
+                        browser.close()
+                        return DownloadResult(success=True, file_path=str(out))
+
+                    last_error = text[:220] or "Nota Carioca nao exibiu documento oficial"
+
+                logger.info("RJ: Nota Carioca tentativa {} falhou: {}", attempt + 1, last_error)
+
+            browser.close()
+        return DownloadResult(success=False, error=f"Nota Carioca sem PDF/XML: {last_error}")
+    except Exception as exc:
+        logger.error("RJ invoice capture error: {}", exc)
+        return DownloadResult(success=False, error=str(exc))
+
 
 def _barueri_attempt(dest_dir: Path, filename: str, label: str) -> tuple[str | None, int | None, str | None]:
     sync_playwright = _try_import_playwright()
@@ -311,21 +432,23 @@ def _barueri_attempt(dest_dir: Path, filename: str, label: str) -> tuple[str | N
             resp = page.goto(_ISSNET_URL, timeout=30000, wait_until="domcontentloaded")
             status = resp.status if resp else None
 
-            try:
-                out = _screenshot(page, dest_dir, filename)
-                file_path = str(out)
-            except Exception:
-                evidence = dest_dir / f"{filename}_evidencia.txt"
-                evidence.write_text(
-                    f"URL: {_ISSNET_URL}\n"
-                    f"HTTP status: {status}\n"
-                    f"Label: {label}\n"
-                    "Cloudflare bloqueou screenshot (CSP/CDP restriction)\n"
-                    "Tentativa realizada com contexto stealth "
-                    "(--disable-blink-features=AutomationControlled, webdriver=undefined, UA Chrome/120)\n",
-                    encoding="utf-8",
-                )
-                file_path = str(evidence)
+            file_path = None
+            if _SAVE_EVIDENCE:
+                try:
+                    out = _screenshot(page, dest_dir, filename)
+                    file_path = str(out) if out else None
+                except Exception:
+                    evidence = dest_dir / f"{filename}_evidencia.txt"
+                    evidence.write_text(
+                        f"URL: {_ISSNET_URL}\n"
+                        f"HTTP status: {status}\n"
+                        f"Label: {label}\n"
+                        "Cloudflare bloqueou screenshot (CSP/CDP restriction)\n"
+                        "Tentativa realizada com contexto stealth "
+                        "(--disable-blink-features=AutomationControlled, webdriver=undefined, UA Chrome/120)\n",
+                        encoding="utf-8",
+                    )
+                    file_path = str(evidence)
             browser.close()
         return file_path, status, None
     except Exception as exc:
@@ -445,7 +568,9 @@ def capture_nfse_nacional(row: InputRow, dest_dir: Path, chave: str) -> Download
         error = None
         if not status or status >= 400:
             error = f"Consulta pública NFS-e retornou HTTP {status}"
-        return DownloadResult(success=status == 200, file_path=str(screenshot), error=error)
+        if status == 200 and not error:
+            error = "Consulta publica capturada em screenshot; PDF/XML da nota nao foi baixado"
+        return DownloadResult(success=False, file_path=str(screenshot) if screenshot else None, error=error)
     except Exception as exc:
         logger.error("NFS-e Nacional capture error: {}", exc)
         return DownloadResult(success=False, error=str(exc))
